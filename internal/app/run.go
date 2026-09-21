@@ -85,5 +85,6 @@ func withMiddleware(h http.Handler, logger *slog.Logger) http.Handler {
 		httpx.WithRequestID(logger),
 		httpx.WithAccessLog(),
 		httpx.WithRecovery(),
+		httpx.WithRequestMetrics(),
 	)
 }

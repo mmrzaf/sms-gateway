@@ -6,11 +6,14 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/mmrzaf/sms-gatway/internal/admin"
 	"github.com/mmrzaf/sms-gatway/internal/api"
 	"github.com/mmrzaf/sms-gatway/internal/auth"
 	"github.com/mmrzaf/sms-gatway/internal/dlr"
 	"github.com/mmrzaf/sms-gatway/internal/httpx"
+	"github.com/mmrzaf/sms-gatway/internal/invariant"
 	"github.com/mmrzaf/sms-gatway/internal/message"
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 	"github.com/mmrzaf/sms-gatway/internal/ratelimit"
 )
 
@@ -23,7 +26,34 @@ func startAPI(ctx context.Context, g *errgroup.Group, d deps) {
 		return nil
 	})
 	serve(ctx, g, d, "public", d.cfg.HTTPAddr, publicHandler(d))
-	serve(ctx, g, d, "admin", d.cfg.AdminAddr, adminHandler(d, batcher))
+	admin, err := newAdminServer(d)
+	if err != nil {
+		g.Go(func() error { return err })
+		return
+	}
+	serve(ctx, g, d, "admin", d.cfg.AdminAddr, adminHandler(d, batcher, admin))
+}
+
+func newAdminServer(d deps) (*admin.Server, error) {
+	return admin.New(d.pool, newMessageService(d), admin.Config{
+		Token:               d.cfg.AdminToken,
+		Providers:           d.cfg.Providers.List,
+		Lanes:               lanes(d),
+		DefaultRateLimitRPS: d.cfg.API.DefaultRateLimitRPS,
+		Invariants: invariant.Config{
+			LeaseDuration: d.cfg.Dispatch.LeaseDuration,
+			SweepInterval: d.cfg.Dispatch.SweepInterval,
+		},
+	}, d.logger)
+}
+
+// lanes lists every queue lane: Express first, then the normal lanes.
+func lanes(d deps) []string {
+	out := []string{message.ExpressLane}
+	for i := range d.cfg.Dispatch.NormalLanes {
+		out = append(out, message.NormalLane(i))
+	}
+	return out
 }
 
 // newMessageService builds the message service from configuration.
@@ -52,7 +82,7 @@ func publicHandler(d deps) http.Handler {
 	return mux
 }
 
-func adminHandler(d deps, batcher *dlr.Batcher) http.Handler {
+func adminHandler(d deps, batcher *dlr.Batcher, adminServer *admin.Server) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", httpx.Healthz)
 	mux.Handle("GET /readyz", httpx.Readyz(d.ready))
@@ -62,6 +92,8 @@ func adminHandler(d deps, batcher *dlr.Batcher) http.Handler {
 		names[i] = p.Name
 	}
 	mux.Handle("POST /internal/dlr", dlr.NewHandler(batcher, d.cfg.Providers.Secret, names))
+	mux.Handle("GET /metrics", metrics.Default.Handler())
+	adminServer.Register(mux)
 
 	mux.HandleFunc("/", httpx.NotFound)
 	return mux

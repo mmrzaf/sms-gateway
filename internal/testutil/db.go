@@ -81,7 +81,18 @@ func EmptyDB(t testing.TB) *pgxpool.Pool {
 // DB returns a pool on a new schema with every migration applied.
 func DB(t testing.TB) *pgxpool.Pool {
 	t.Helper()
-	pool := EmptyDB(t)
+	return MigrateURL(t, SchemaURL(t))
+}
+
+// MigrateURL applies every migration to the database at url and returns a
+// pool on it, closed when the test ends.
+func MigrateURL(t testing.TB, url string) *pgxpool.Pool {
+	t.Helper()
+	pool, err := store.Open(context.Background(), url, 20)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
 	list, err := store.LoadMigrations(migrations.FS)
 	if err != nil {
 		t.Fatalf("load migrations: %v", err)
