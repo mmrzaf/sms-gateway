@@ -50,6 +50,10 @@ migrate: db ## Apply migrations to the stack's database from the host
 seed: ## Create or refresh demo customers and print their API keys
 	@$(COMPOSE) exec -T gateway-api gateway seed
 
+.PHONY: check
+check: ## Run the invariant checker against the stack
+	@$(COMPOSE) exec -T gateway-api gateway check
+
 .PHONY: run
 run: migrate ## Run the gateway on the host in the "all" role
 	$(LOCAL_ENV) go run ./cmd/gateway serve --role=all

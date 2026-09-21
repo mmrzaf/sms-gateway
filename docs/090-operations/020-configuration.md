@@ -79,6 +79,8 @@ All configuration comes from environment variables. Durations use Go syntax (`50
 | `DLR_BATCH_SIZE` | `500` | Reports per batch |
 | `DLR_FLUSH_INTERVAL` | `50ms` | Maximum wait before a batch commits |
 
+`gateway migrate` and `gateway seed` read only `DATABASE_URL` and `DB_MAX_CONNS`. `gateway check` also reads `LEASE_DURATION` and `SWEEP_INTERVAL`, which set the thresholds of its time-based checks and should match the workers' values.
+
 ### Cross-field validation
 
 - `LEASE_DURATION >= 3 × max(NORMAL_TIMEOUT, EXPRESS_TIMEOUT)`.

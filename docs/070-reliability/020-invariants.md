@@ -18,7 +18,17 @@ These cannot be violated by any code path, because the database rejects the writ
 
 ## Verified by the checker
 
-These depend on application logic and are verified by `gateway check`, `make check`, and `GET /admin/api/invariants`. Each check returns the number of violations and up to 10 sample IDs.
+These depend on application logic and are verified by `gateway check`, `make check`, and `GET /admin/api/invariants`. Each check returns the number of violations and up to 10 sample IDs, and is reported under the name shown here:
+
+| Check | Name in reports |
+|---|---|
+| I1 | `balance_matches_transactions` |
+| I2 | `one_debit_per_message` |
+| I3 | `refund_iff_failed_or_expired` |
+| I4 | `accepted_messages_are_queued` |
+| I5 | `finished_messages_leave_the_queue` |
+| I6 | `no_abandoned_leases` |
+| I7 | `timestamps_consistent` |
 
 **I1: balance equals the sum of transactions**
 
@@ -94,7 +104,7 @@ WHERE (status IN ('sent') AND sent_at IS NULL)
 
 | Command | Output |
 |---|---|
-| `gateway check` | One line per check; exit code `0` if all pass, `1` otherwise |
+| `gateway check [--json]` | One line per check (or a JSON report); exit code `0` if all pass, `1` otherwise. Reads `DATABASE_URL`, and `LEASE_DURATION` and `SWEEP_INTERVAL` for the thresholds of I5 |
 | `make check` | Runs `gateway check` against the local stack |
 | `GET /admin/api/invariants` | JSON result; see [Admin API](../050-api/030-admin-api.md#invariants) |
 

@@ -117,3 +117,22 @@ func TestSeedCommand(t *testing.T) {
 		t.Errorf("second seed: code %d, stderr %q", code, stderr)
 	}
 }
+
+func TestCheckCommand(t *testing.T) {
+	vars := map[string]string{"DATABASE_URL": testutil.SchemaURL(t)}
+	if code, _, stderr := runCommand(t, vars, "migrate"); code != exitOK {
+		t.Fatalf("migrate: %s", stderr)
+	}
+	if code, _, stderr := runCommand(t, vars, "seed"); code != exitOK {
+		t.Fatalf("seed: %s", stderr)
+	}
+
+	code, stdout, stderr := runCommand(t, vars, "check")
+	if code != exitOK || strings.Count(stdout, "PASS") != 7 || strings.Contains(stdout, "FAIL") {
+		t.Fatalf("check: code %d\n%s%s", code, stdout, stderr)
+	}
+	code, stdout, _ = runCommand(t, vars, "check", "--json")
+	if code != exitOK || !strings.Contains(stdout, `"ok": true`) {
+		t.Errorf("check --json: code %d\n%s", code, stdout)
+	}
+}

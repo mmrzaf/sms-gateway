@@ -3,10 +3,12 @@ package testutil
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mmrzaf/sms-gatway/internal/customer"
+	"github.com/mmrzaf/sms-gatway/internal/invariant"
 )
 
 // Customer creates a customer with the given credits and a rate limit high
@@ -49,5 +51,23 @@ func AssertLedgerConsistent(t testing.TB, pool *pgxpool.Pool) {
 	if badBalances > 0 || badDebits > 0 {
 		t.Errorf("ledger inconsistent: %d balances differ from their transactions, %d messages without exactly one debit",
 			badBalances, badDebits)
+	}
+}
+
+// AssertInvariants fails the test if any invariant check fails. Tests call it
+// after exercising a flow end to end.
+func AssertInvariants(t testing.TB, pool *pgxpool.Pool) {
+	t.Helper()
+	report, err := invariant.Run(context.Background(), pool, invariant.Config{
+		LeaseDuration: 30 * time.Second,
+		SweepInterval: 10 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("run invariant checks: %v", err)
+	}
+	for _, c := range report.Checks {
+		if !c.OK {
+			t.Errorf("invariant %s violated by %d rows, for example %v", c.Name, c.Violations, c.Sample)
+		}
 	}
 }
