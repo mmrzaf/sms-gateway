@@ -11,6 +11,19 @@ x-gateway: &gateway
   env_file: .env
   restart: unless-stopped
 
+x-provider: &provider
+  image: sms-gateway:local
+  command: ["provider", "serve"]
+  restart: unless-stopped
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+x-provider-env: &provider-env
+  GATEWAY_DLR_URL: http://gateway-api:8081/internal/dlr
+  PROVIDER_SECRET: ${PROVIDER_SECRET:-local-provider-secret}
+  LOG_LEVEL: info
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -60,6 +73,34 @@ services:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "gateway", "probe", "http://localhost:8082/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  provider-a:
+    <<: *provider
+    environment:
+      <<: *provider-env
+      PROVIDER_NAME: A
+      PROVIDER_ADDR: ":9001"
+    ports:
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "provider", "probe", "http://localhost:9001/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  provider-b:
+    <<: *provider
+    environment:
+      <<: *provider-env
+      PROVIDER_NAME: B
+      PROVIDER_ADDR: ":9002"
+    ports:
+      - "9002:9002"
+    healthcheck:
+      test: ["CMD", "provider", "probe", "http://localhost:9002/healthz"]
       interval: 5s
       timeout: 3s
       retries: 12
