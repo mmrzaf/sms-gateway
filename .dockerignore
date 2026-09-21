@@ -1,0 +1,7 @@
+.git
+.github
+bin
+docs
+loadtest
+deploy/.env
+*.md
