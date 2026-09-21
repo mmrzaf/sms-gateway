@@ -1,0 +1,14 @@
+# Build output
+/bin/
+
+# Local configuration
+/deploy/.env
+
+# Test and load-test output
+/coverage.out
+/loadtest/results/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
