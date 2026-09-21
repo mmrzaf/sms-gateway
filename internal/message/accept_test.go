@@ -71,7 +71,7 @@ func TestAcceptRecordsMessageDebitAndQueueRow(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT lane FROM queue WHERE message_id = $1`, m.ID).Scan(&lane); err != nil || lane != message.ExpressLane {
 		t.Errorf("queue lane = %q, %v", lane, err)
 	}
-	testutil.AssertLedgerConsistent(t, pool)
+	testutil.AssertInvariants(t, pool)
 }
 
 // IT01: overspend under concurrency.
@@ -112,7 +112,7 @@ func TestConcurrentAcceptsNeverOverspend(t *testing.T) {
 	if n := count(t, pool, `SELECT count(*) FROM queue`); n != 100 {
 		t.Errorf("%d queue rows, want 100", n)
 	}
-	testutil.AssertLedgerConsistent(t, pool)
+	testutil.AssertInvariants(t, pool)
 }
 
 // IT02: charges and sends interleaved.
@@ -151,7 +151,7 @@ func TestChargesAndSendsInterleaved(t *testing.T) {
 	if got, want := balance(t, pool, c.ID), int64(500-accepted); got != want {
 		t.Errorf("balance = %d, want %d (500 charged, %d accepted)", got, want, accepted)
 	}
-	testutil.AssertLedgerConsistent(t, pool)
+	testutil.AssertInvariants(t, pool)
 }
 
 // IT03: concurrent duplicate client_ref.
@@ -190,7 +190,7 @@ func TestConcurrentDuplicateClientRef(t *testing.T) {
 	if got := balance(t, pool, c.ID); got != 99 {
 		t.Errorf("balance = %d, want 99", got)
 	}
-	testutil.AssertLedgerConsistent(t, pool)
+	testutil.AssertInvariants(t, pool)
 }
 
 // IT04: client_ref conflict.
@@ -245,7 +245,7 @@ func TestBatchIsAllOrNothing(t *testing.T) {
 	if got := balance(t, pool, c.ID); got != 0 {
 		t.Errorf("balance = %d", got)
 	}
-	testutil.AssertLedgerConsistent(t, pool)
+	testutil.AssertInvariants(t, pool)
 }
 
 // IT06: batch idempotency.
@@ -289,7 +289,7 @@ func TestBatchIdempotency(t *testing.T) {
 	if got, want := balance(t, pool, c.ID), 100-first.TotalCost; got != want {
 		t.Errorf("balance = %d, want %d", got, want)
 	}
-	testutil.AssertLedgerConsistent(t, pool)
+	testutil.AssertInvariants(t, pool)
 }
 
 func TestGetAndListAreScopedToCustomer(t *testing.T) {

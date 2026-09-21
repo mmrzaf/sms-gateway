@@ -29,7 +29,7 @@ All run with `make test-integration`, and all end with the invariant checker.
 | IT19 | Express isolation | 10,000 normal rows ready, then 1 Express message | Express message claimed by the Express pool before any further normal claim completes |
 | IT20 | Concurrent sweepers | Two sweepers over the same expired rows | Each message expired and refunded exactly once |
 | IT21 | Customer deletion in flight | Delete a customer whose rows are leased | Completion affects zero rows; no errors surface; DLRs counted `unknown` |
-| IT22 | Invariant checker detects faults | Corrupt a balance, delete a debit, add a second refund row via a bypass | Each targeted check reports exactly the corrupted IDs |
+| IT22 | Invariant checker detects faults | One corruption per check: alter a balance, delete a debit, refund a message that is not failed, remove a queue row, leave a finished message queued, abandon a lease, drop a required timestamp | Each targeted check reports exactly the corrupted ID |
 
 IT22 tests the checker itself, so a passing checker is meaningful.
 

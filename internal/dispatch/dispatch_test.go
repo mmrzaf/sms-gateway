@@ -237,7 +237,7 @@ func assertRefunded(t *testing.T, pool *pgxpool.Pool, customer uuid.UUID, wantBa
 	if balance != wantBalance || refunds != wantRefunds {
 		t.Errorf("balance %d with %d refunds, want %d with %d", balance, refunds, wantBalance, wantRefunds)
 	}
-	testutil.AssertLedgerConsistent(t, pool)
+	testutil.AssertInvariants(t, pool)
 }
 
 // IT15: circuit breaker.
@@ -528,5 +528,39 @@ func TestEndToEndDeliveryReport(t *testing.T) {
 		t.Errorf("delivered message: %+v", got)
 	}
 	waitForStatus(t, svc, undelivered, message.StatusUndelivered)
-	testutil.AssertLedgerConsistent(t, pool)
+	testutil.AssertInvariants(t, pool)
+}
+
+// IT21: a customer is deleted while its messages are in flight.
+func TestCustomerDeletedInFlight(t *testing.T) {
+	pool := testutil.DB(t)
+	svc := newMessages(pool, 4)
+	c, _ := testutil.Customer(t, pool, 100)
+	ctx := context.Background()
+
+	m := accept(t, svc, c.ID, message.Normal, "+989121234567")
+	w := New(testConfig("http://unused"), pool, discard)
+	jobs, err := w.claim(ctx, message.Lane(message.Normal, c.ID, 4), 1)
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("claim: %v, %d jobs", err, len(jobs))
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM customers WHERE id = $1`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, o := range []outcome{
+		{kind: outcomeSent, job: jobs[0], provider: "A", providerRef: "r", attempted: true},
+		{kind: outcomeFailed, job: jobs[0], provider: "A", reason: message.ReasonRejected, attempted: true},
+	} {
+		if err := store.WithTx(ctx, pool, func(tx pgx.Tx) error {
+			return w.completer.commit(ctx, tx, []outcome{o})
+		}); err != nil {
+			t.Errorf("completing a deleted customer's message: %v", err)
+		}
+	}
+	outcomes, err := dlr.Apply(ctx, pool, []dlr.Report{{MessageID: m.ID, Provider: "A", ProviderRef: "r", Status: "delivered"}})
+	if err != nil || outcomes[0] != dlr.Unknown {
+		t.Errorf("report for a deleted message: %v, %v", outcomes, err)
+	}
+	testutil.AssertInvariants(t, pool)
 }
