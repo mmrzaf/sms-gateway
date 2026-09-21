@@ -8,8 +8,9 @@ import (
 
 // PostgreSQL error codes used by the application.
 const (
-	codeUniqueViolation = "23505"
-	codeCheckViolation  = "23514"
+	codeUniqueViolation     = "23505"
+	codeCheckViolation      = "23514"
+	codeForeignKeyViolation = "23503"
 )
 
 // IsUniqueViolation reports whether err is a unique-constraint violation on
@@ -22,6 +23,12 @@ func IsUniqueViolation(err error, constraint string) bool {
 // named constraint. An empty name matches any check violation.
 func IsCheckViolation(err error, constraint string) bool {
 	return hasCode(err, codeCheckViolation, constraint)
+}
+
+// IsForeignKeyViolation reports whether err is a foreign-key violation on the
+// named constraint. An empty name matches any foreign-key violation.
+func IsForeignKeyViolation(err error, constraint string) bool {
+	return hasCode(err, codeForeignKeyViolation, constraint)
 }
 
 func hasCode(err error, code, constraint string) bool {
