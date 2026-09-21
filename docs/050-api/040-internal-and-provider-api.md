@@ -56,8 +56,8 @@ X-Provider-Secret: <PROVIDER_SECRET>
 
 | Status | When | Provider behavior |
 |---|---|---|
-| `200` | Report committed, or recognized as a duplicate, unknown, or late | Stop |
-| `400` | Malformed body | Stop; the report is unusable |
+| `200` | Report committed, or recognized as a duplicate, unknown, or late; body `{"outcome": "applied" \| "duplicate" \| "ignored_terminal" \| "unknown"}` | Stop |
+| `400` | Malformed body; error code `validation_failed` with field details | Stop; the report is unusable |
 | `401` | Wrong or missing secret | Stop |
 | `503` | The database is unavailable | Retry with backoff |
 
