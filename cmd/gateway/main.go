@@ -45,6 +45,7 @@ func init() {
 	commands = []command{
 		{"serve", "Run the gateway in a role (api, worker, or all)", runServe},
 		{"migrate", "Apply, revert, or list database migrations", runMigrate},
+		{"seed", "Create the demo customers, or rotate their keys, and print the keys", runSeed},
 		{"probe", "Request a health URL and exit 0 on HTTP 200", runProbe},
 		{"version", "Print version information", runVersion},
 		{"help", "Show this help", runHelp},

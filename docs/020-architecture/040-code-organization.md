@@ -19,8 +19,9 @@ How the Go codebase is laid out, what each package owns, and which dependencies 
 │   ├── httpx/                JSON decoding, error envelope, middleware,
 │   │                         health endpoints, server lifecycle
 │   ├── segment/              encoding detection and segment counting (pure)
-│   ├── billing/              prices, debit/charge/refund operations, transaction queries
-│   ├── message/              accept flow, message queries, reports, state rules
+│   ├── billing/              debit, charge, and refund operations, transaction queries
+│   ├── customer/             customer creation, updates, key rotation, deletion
+│   ├── message/              pricing, lanes, accept flow, message queries, reports
 │   ├── auth/                 API key generation, hashing, key cache
 │   ├── ratelimit/            per-customer token buckets
 │   ├── api/                  customer HTTP handlers, OpenAPI serving
@@ -36,7 +37,8 @@ How the Go codebase is laid out, what each package owns, and which dependencies 
 │   └── testutil/             test database and fixtures (tests only)
 ├── migrations/               SQL migrations, embedded in the binary
 ├── api/
-│   └── openapi.yaml          customer API specification
+│   ├── openapi.yaml          customer API specification
+│   └── openapi.go            embeds the specification for serving
 ├── loadtest/                 k6 scenarios, benchmarks, chaos scripts
 ├── deploy/
 │   ├── Dockerfile            multi-stage build of both binaries
@@ -75,8 +77,9 @@ Configuration comes only from environment variables; flags select what to run. B
 | Package | Owns | Must not |
 |---|---|---|
 | `segment` | GSM-7/UCS-2 detection, segment counting | Depend on anything outside the standard library |
-| `billing` | Prices, all SQL touching `customers.balance` and `transactions` | Know about HTTP |
-| `message` | The accept transaction, message SQL, report queries | Call providers |
+| `billing` | All SQL touching `customers.balance` and `transactions` | Know about HTTP |
+| `customer` | Customer rows and API key rotation; initial credits through `billing` | Change a balance except through `billing` |
+| `message` | Prices, lanes, the accept transaction, message SQL, report queries | Call providers |
 | `dispatch` | Everything between claiming a queue row and completing it | Serve HTTP |
 | `dlr` | DLR validation, batching, status SQL for DLRs | Touch credits |
 | `api`, `admin` | HTTP concerns: decoding, validation messages, status codes | Contain SQL |
@@ -91,7 +94,8 @@ flowchart TD
     cmd --> app
     app --> api & admin & dlr & dispatch & sweeper & heartbeat
     api --> message & billing & auth & ratelimit & httpx
-    admin --> message & billing & auth & invariant & httpx
+    admin --> message & billing & customer & invariant & httpx
+    customer --> billing & auth
     message --> billing & segment & store
     dispatch --> message & billing & store
     sweeper --> billing & store

@@ -95,3 +95,25 @@ func TestMigrateCommand(t *testing.T) {
 		t.Fatalf("down: code %d, stdout %q", code, stdout)
 	}
 }
+
+func TestSeedCommand(t *testing.T) {
+	vars := map[string]string{"DATABASE_URL": testutil.SchemaURL(t)}
+	if code, _, stderr := runCommand(t, vars, "migrate"); code != exitOK {
+		t.Fatalf("migrate: %s", stderr)
+	}
+
+	code, first, stderr := runCommand(t, vars, "seed")
+	if code != exitOK || !strings.Contains(stderr, "created acme") {
+		t.Fatalf("seed: code %d, stderr %q", code, stderr)
+	}
+	for _, v := range []string{"ACME_KEY=sk_", "BULK_KEY=sk_", "QUICK_KEY=sk_"} {
+		if !strings.Contains(first, v) {
+			t.Errorf("output lacks %s: %q", v, first)
+		}
+	}
+
+	code, second, stderr := runCommand(t, vars, "seed")
+	if code != exitOK || !strings.Contains(stderr, "rotated the key of acme") || second == first {
+		t.Errorf("second seed: code %d, stderr %q", code, stderr)
+	}
+}
