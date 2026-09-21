@@ -1,0 +1,41 @@
+# Benchmark profile: layered on docker-compose.yml by "make bench".
+# Two workers, a larger PostgreSQL configuration, and providers with no
+# latency or failures, so the gateway itself is what is measured.
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - max_connections=300
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - wal_compression=on
+
+  gateway-api:
+    environment:
+      DB_MAX_CONNS: "50"
+      API_INSTANCES: "1"
+
+  gateway-worker:
+    deploy:
+      replicas: 2
+    environment:
+      DB_MAX_CONNS: "40"
+      PROVIDER_RATE_LIMIT: "20000"
+
+  provider-a:
+    environment:
+      SIM_LATENCY_MS: "0"
+      SIM_JITTER_MS: "0"
+      SIM_DLR_DELAY_MS: "200"
+      SIM_DLR_JITTER_MS: "100"
+
+  provider-b:
+    environment:
+      SIM_LATENCY_MS: "0"
+      SIM_JITTER_MS: "0"
+      SIM_DLR_DELAY_MS: "200"
+      SIM_DLR_JITTER_MS: "100"

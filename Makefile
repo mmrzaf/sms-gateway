@@ -1,6 +1,9 @@
 # Common development tasks. Run "make help" for the list.
 
 COMPOSE      := docker compose -f deploy/docker-compose.yml
+COMPOSE_BENCH := $(COMPOSE) -f deploy/docker-compose.bench.yml
+K6           ?= k6
+SCENARIO     ?= steady
 VERSION      ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT       ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 LDFLAGS      := -s -w \
@@ -74,6 +77,19 @@ test-integration: db ## Run all tests, including those that need PostgreSQL
 lint: ## Run go vet and staticcheck
 	go vet ./...
 	go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+
+.PHONY: loadtest
+loadtest: ## Run one k6 scenario against the stack (SCENARIO=name)
+	$(K6) run loadtest/scenarios/$(SCENARIO).js
+
+.PHONY: chaos
+chaos: ## Run one failure-injection scenario against the stack (SCENARIO=name)
+	loadtest/chaos/$(SCENARIO).sh
+
+.PHONY: bench
+bench: deploy/.env ## Start the stack with the bench profile and run the benchmark suite
+	$(COMPOSE_BENCH) up -d --build --wait
+	COMPOSE="$(COMPOSE_BENCH)" K6="$(K6)" loadtest/bench/run.sh
 
 .PHONY: fmt
 fmt: ## Format all Go code

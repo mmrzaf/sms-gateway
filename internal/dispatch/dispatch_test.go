@@ -36,7 +36,7 @@ type scripted struct {
 	answer func(n int, req sendBody) (status int, delay time.Duration)
 }
 
-func newScripted(t *testing.T, answer func(n int, req sendBody) (int, time.Duration)) *scripted {
+func newScripted(t testing.TB, answer func(n int, req sendBody) (int, time.Duration)) *scripted {
 	s := &scripted{answer: answer}
 	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req sendBody
@@ -99,7 +99,7 @@ func newMessages(pool *pgxpool.Pool, lanes int) *message.Service {
 	})
 }
 
-func startWorker(t *testing.T, pool *pgxpool.Pool, cfg Config) *Worker {
+func startWorker(t testing.TB, pool *pgxpool.Pool, cfg Config) *Worker {
 	t.Helper()
 	w := New(cfg, pool, discard)
 	w.random = func() float64 { return 0.5 }
@@ -155,7 +155,7 @@ func waitForStatus(t *testing.T, svc *message.Service, m message.Message, want m
 	return got
 }
 
-func queueRows(t *testing.T, pool *pgxpool.Pool) int {
+func queueRows(t testing.TB, pool *pgxpool.Pool) int {
 	t.Helper()
 	var n int
 	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM queue`).Scan(&n); err != nil {
