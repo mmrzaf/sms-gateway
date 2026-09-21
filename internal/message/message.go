@@ -7,6 +7,7 @@ package message
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -110,15 +111,20 @@ const columns = `id, customer_id, type, recipient, body, encoding, segments, cos
 	accepted_at, expires_at, sent_at, completed_at`
 
 func scan(row pgx.CollectableRow) (Message, error) {
+	return scanWith(row)
+}
+
+// scanWith scans the message columns followed by extra destinations.
+func scanWith(row pgx.CollectableRow, extra ...any) (Message, error) {
 	var (
 		m                     Message
 		typ, encoding, status string
 		failureReason         *string
 	)
-	err := row.Scan(&m.ID, &m.CustomerID, &typ, &m.Recipient, &m.Body, &encoding, &m.Segments,
+	dest := []any{&m.ID, &m.CustomerID, &typ, &m.Recipient, &m.Body, &encoding, &m.Segments,
 		&m.Cost, &status, &m.Attempts, &m.Provider, &m.ProviderRef, &m.LastError, &failureReason,
-		&m.SLABreached, &m.ClientRef, &m.AcceptedAt, &m.ExpiresAt, &m.SentAt, &m.CompletedAt)
-	if err != nil {
+		&m.SLABreached, &m.ClientRef, &m.AcceptedAt, &m.ExpiresAt, &m.SentAt, &m.CompletedAt}
+	if err := row.Scan(append(dest, extra...)...); err != nil {
 		return Message{}, err
 	}
 	m.Type, m.Encoding, m.Status = Type(typ), segment.Encoding(encoding), Status(status)
@@ -127,4 +133,13 @@ func scan(row pgx.CollectableRow) (Message, error) {
 		m.FailureReason = &r
 	}
 	return m, nil
+}
+
+// prefixed qualifies every column in a comma-separated list with prefix.
+func prefixed(prefix, cols string) string {
+	parts := strings.Split(cols, ",")
+	for i, p := range parts {
+		parts[i] = prefix + strings.TrimSpace(p)
+	}
+	return strings.Join(parts, ", ")
 }
