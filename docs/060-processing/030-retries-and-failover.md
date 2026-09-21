@@ -75,7 +75,7 @@ stateDiagram-v2
 
 - **Closed**: requests flow; a success resets the failure count.
 - **Open**: the provider is not used. Pools whose class has no other usable provider stop claiming until the earliest probe time.
-- **Half-open**: exactly one request is sent as a probe. Other requests treat the provider as unusable until the probe returns.
+- **Half-open**: exactly one request is sent as a probe. Other requests treat the provider as unusable until the probe returns. A probe that fails for a reason that is not the provider's fault, such as throttling, neither closes nor reopens the circuit; the next request becomes the probe.
 
 Circuit state is in memory and independent per worker, which avoids coordination; each worker discovers a failure within 20 requests. Circuit states are reported in the heartbeat and shown on the dashboard.
 
