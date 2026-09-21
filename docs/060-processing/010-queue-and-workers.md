@@ -28,11 +28,12 @@ A pool claims ready rows from one lane:
 WITH picked AS (
     SELECT q.message_id
     FROM queue q
+    JOIN messages m ON m.id = q.message_id AND m.status = 'accepted'
     WHERE q.lane = $lane
       AND q.next_attempt_at <= now()
     ORDER BY q.next_attempt_at
     LIMIT $n
-    FOR UPDATE SKIP LOCKED
+    FOR UPDATE OF q SKIP LOCKED
 )
 UPDATE queue q
 SET lease_owner = $worker_id,
@@ -48,6 +49,7 @@ RETURNING m.id, m.customer_id, m.type, m.recipient, m.body, m.attempts,
 - Setting `next_attempt_at` to the lease deadline is the lease. The condition `next_attempt_at <= now()` then matches both never-claimed rows and rows whose lease expired, so a crashed worker's messages are reclaimed by the ordinary claim query.
 - `ORDER BY next_attempt_at` serves the oldest ready work in the lane first.
 - `db_now` gives the dispatch goroutines the database time for expiry decisions.
+- Only messages still `accepted` are claimed. A queue row whose message a delivery report already finalized is left for the sweeper to remove, so a delivered message is never sent again.
 
 The lease duration is 30 seconds (`LEASE_DURATION`). It must exceed the provider timeout plus the completer's flush interval by a wide margin; the configuration loader rejects a lease shorter than three times the largest provider timeout.
 
@@ -88,7 +90,7 @@ Provider selection, error classification, backoff, and circuit breaking are in [
 
 Dispatch goroutines hand outcomes to the completer through a channel. The completer commits accumulated outcomes in one transaction when 200 outcomes are pending or 50 ms have passed since the first pending outcome (`COMPLETER_BATCH_SIZE`, `COMPLETER_FLUSH_INTERVAL`). Batching turns thousands of per-message commits into a few dozen per second.
 
-Every statement is guarded twice: message updates by a status compare-and-set, and queue changes by `lease_owner = $worker_id`. If a lease expired and another worker reclaimed the row, the stale worker's queue changes affect zero rows, and its message update is either still valid (the provider deduplicates the second send) or superseded.
+Outcomes in a batch are sorted by message ID before they are applied, and the DLR batcher sorts the same way, so concurrent transactions lock message rows in the same order. Every statement is guarded twice: message updates by a status compare-and-set, and queue changes by `lease_owner = $worker_id`. If a lease expired and another worker reclaimed the row, the stale worker's queue changes affect zero rows, and its message update is either still valid (the provider deduplicates the second send) or superseded.
 
 **sent**
 
