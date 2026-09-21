@@ -45,17 +45,19 @@ Run with `make loadtest SCENARIO=<name>`. Each scenario creates its own customer
 | `noisy-neighbor` | `bulkco` at its full limit; `acme` at 10 messages/s | `acme` accept-to-sent p95 < 2 s during the flood |
 | `express-under-load` | Normal lanes saturated by `bulkco`; `quickpay` sends 50 Express messages/s | Express accept-to-sent p99 < 2 s; zero SLA breaches |
 | `provider-outage` | Mixed traffic; provider A outage for 60 s, then recovery | Express accept-to-sent p99 < 5 s during the outage; no message `failed` or `expired`; backlog drains after recovery |
-| `provider-chaos` | Provider A: failure rate 0.3, timeout rate 0.05; 5 minutes | Every message ends `sent`, `delivered`, `undelivered`, or `failed`; every normal message is accepted by providers at most once (timeouts are resolved by deduplication); invariants pass |
+| `provider-chaos` | Provider A: failure rate 0.3, timeout rate 0.05; normal traffic at 100 messages/s for 5 minutes | No message is left `accepted`; provider A's acceptances equal the messages the gateway sent through A, so no message was accepted twice despite timeouts; invariants pass |
 
-Latency figures are computed from `accepted_at` and `sent_at` of the scenario's messages, read through the admin API after the run.
+Latency figures are computed from `accepted_at` and `sent_at` of the scenario's messages, read through the admin API after the run. Each criterion is printed as `PASS` or `FAIL`; a failed criterion increments the `criteria_failed` counter, whose threshold makes k6 exit with a non-zero status.
+
+Scenarios read `API_URL` (default `http://localhost:8080`), `ADMIN_URL` (`http://localhost:8081`), and `ADMIN_TOKEN` (`admin`); `steady` and `provider-chaos` also read `RATE`, and most scenarios read `DURATION`. Pass them with `k6 run -e NAME=value` or as environment variables.
 
 ## Chaos scenarios
 
-Run with `make chaos SCENARIO=<name>`. Each runs the `steady` load while injecting the failure, then waits for the backlog to drain and runs the invariant checker.
+Run with `make chaos SCENARIO=<name>`. Each runs the `steady` scenario for 4 minutes (`DURATION`) with `CHAOS=1`, which tolerates failed requests, injects the failure, and ends with the invariant checker. The load gives every message a `client_ref` and retries unanswered requests with it, so client retries during failures are replays.
 
 | Scenario | Failure injected | Passes when |
 |---|---|---|
-| `worker-kill` | `docker compose kill gateway-worker` every 60 s, restarted after 10 s | No message lost; every leased row reclaimed; invariants pass |
+| `worker-kill` | Kill `gateway-worker` three times, 60 s apart, restarting it after 10 s | No message lost; every leased row reclaimed; invariants pass |
 | `api-kill` | Kill and restart `gateway-api` during load | Requests either completed or failed at the client; retries with `client_ref` produce no duplicates |
 | `provider-restart` | Restart provider A during load | Messages whose DLRs were lost remain `sent`; invariants pass |
 | `db-restart` | Restart PostgreSQL during load | API returns `503` during the restart; after recovery all accepted messages are dispatched; invariants pass |
