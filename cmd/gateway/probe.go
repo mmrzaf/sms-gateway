@@ -5,12 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/http"
 	"time"
+
+	"github.com/mmrzaf/sms-gatway/internal/httpx"
 )
 
-// runProbe requests a URL and succeeds only on HTTP 200. Container health
-// checks use it because the runtime image contains no shell tools.
+// runProbe requests a URL and succeeds only on HTTP 200.
 func runProbe(ctx context.Context, args []string, e env) int {
 	fs := flag.NewFlagSet("probe", flag.ContinueOnError)
 	fs.SetOutput(e.stderr)
@@ -25,25 +25,8 @@ func runProbe(ctx context.Context, args []string, e env) int {
 		fmt.Fprintln(e.stderr, "usage: gateway probe [--timeout=2s] <url>")
 		return exitUsage
 	}
-	return probe(ctx, fs.Arg(0), *timeout, e)
-}
-
-func probe(ctx context.Context, url string, timeout time.Duration, e env) int {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
+	if err := httpx.Probe(ctx, fs.Arg(0), *timeout); err != nil {
 		fmt.Fprintf(e.stderr, "probe: %v\n", err)
-		return exitUsage
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		fmt.Fprintf(e.stderr, "probe: %v\n", err)
-		return exitFailure
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(e.stderr, "probe: %s returned %s\n", url, resp.Status)
 		return exitFailure
 	}
 	return exitOK
