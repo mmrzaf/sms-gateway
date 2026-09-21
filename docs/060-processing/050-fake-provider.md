@@ -18,9 +18,10 @@ Each `POST /send` is processed in this order:
 | 4 | Random draw below `reject_rate` | `400 invalid_recipient` | `rejected` |
 | 5 | Random draw below `failure_rate` | `500` | `failed` |
 | 6 | Accept: assign `provider_ref`, schedule DLR | | `accepted` |
-| 7 | Random draw below `timeout_rate` | Response held for 30 s | `timed_out` |
+| 7 | Random draw below `timeout_rate` | Response held for 30 s, then the connection is dropped | `timed_out` |
 | 8 | Otherwise | `200` after latency | |
 
+- A body that is not valid JSON, or lacks `id` or `to`, is answered with `400 {"error": "invalid_request"}` before any other step.
 - **Latency** is `latency_ms` plus a uniform random value in `[0, jitter_ms]`, applied before every response except `outage`.
 - **Timeouts accept the message first**, then hold the response longer than any gateway timeout. This reproduces the ambiguous case of a real operator: the message was accepted, but the gateway does not learn it until a retry is answered from the deduplication store.
 - `provider_ref` has the form `<name>-<8 hex characters>`, for example `A-8f3a21c9`.
@@ -31,6 +32,10 @@ Each `POST /send` is processed in this order:
 For each accepted message, a report is scheduled after `dlr_delay_ms` plus a uniform random value in `[0, dlr_jitter_ms]`. The status is `delivered` with probability `delivery_ratio`, otherwise `undelivered` (always `undelivered` for `+998` recipients).
 
 Reports are sent to `GATEWAY_DLR_URL` with `X-Provider-Secret`. A `503` or network error is retried with backoff starting at 1 s, doubling up to 60 s, for at most 10 attempts; `200`, `400`, and `401` end delivery. Reports that exhaust their attempts are counted as `dlr_failed`.
+
+## Counters
+
+`GET /admin/stats` reports cumulative counters. `accepted` counts every accepted message, including those whose response was held (which are also counted in `timed_out`); `duplicates` counts sends answered from the deduplication store; `received` counts every well-formed send request.
 
 ## Simulation settings
 

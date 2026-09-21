@@ -17,7 +17,7 @@ Implemented by each provider; called by gateway workers.
 | Status | Body | Gateway interpretation |
 |---|---|---|
 | `200` | `{ "provider_ref": "A-8f3a21c9", "accepted_at": "..." }` | Accepted: message becomes `sent` |
-| `400` | `{ "error": "invalid_recipient" }` | Permanent: message `failed`, reason `rejected` |
+| `400` | `{ "error": "invalid_recipient" }` or `{ "error": "invalid_request" }` | Permanent: message `failed`, reason `rejected` |
 | `429` | `{ "error": "throttled" }` | Retryable |
 | `5xx` | any | Retryable |
 | Timeout or connection error | — | Retryable; outcome unknown, resolved by provider deduplication on retry |

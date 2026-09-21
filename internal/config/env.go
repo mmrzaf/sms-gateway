@@ -138,6 +138,19 @@ func (r *reader) float(key string, def, min, max float64) float64 {
 	return f
 }
 
+func (r *reader) bool(key string, def bool) bool {
+	v, ok := r.value(key)
+	if !ok {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		r.fail(key, "must be true or false, got %q", v)
+		return def
+	}
+	return b
+}
+
 // duration parses a positive Go duration such as "50ms" or "24h".
 func (r *reader) duration(key string, def time.Duration) time.Duration {
 	v, ok := r.value(key)
