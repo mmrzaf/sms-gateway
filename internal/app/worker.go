@@ -9,14 +9,24 @@ import (
 	"github.com/mmrzaf/sms-gatway/internal/dispatch"
 	"github.com/mmrzaf/sms-gatway/internal/heartbeat"
 	"github.com/mmrzaf/sms-gatway/internal/httpx"
+	"github.com/mmrzaf/sms-gatway/internal/sweeper"
 )
 
-// startWorker runs the dispatcher, its heartbeat, and the worker's metrics
-// and health server.
+// startWorker runs the dispatcher, the sweeper, the heartbeat, and the
+// worker's metrics and health server.
 func startWorker(ctx context.Context, g *errgroup.Group, d deps) {
 	w := dispatch.New(dispatch.FromGateway(d.cfg), d.pool, d.logger)
 	g.Go(func() error {
 		return w.Run(ctx)
+	})
+	sw := sweeper.New(sweeper.Config{
+		Interval:    d.cfg.Dispatch.SweepInterval,
+		ExpressSLA:  d.cfg.Express.SLA,
+		NormalLanes: d.cfg.Dispatch.NormalLanes,
+	}, d.pool, d.logger)
+	g.Go(func() error {
+		sw.Run(ctx)
+		return nil
 	})
 	g.Go(func() error {
 		heartbeat.Run(ctx, d.pool, w.ID(), string(RoleWorker), d.cfg.Dispatch.HeartbeatInterval, w.Snapshot, d.logger)
