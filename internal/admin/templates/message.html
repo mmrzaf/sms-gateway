@@ -1,0 +1,32 @@
+{{define "content"}}
+{{$m := .M}}
+<section class="card">
+  <dl>
+    <dt>ID</dt><dd><code>{{$m.ID}}</code></dd>
+    <dt>Customer</dt><dd><a href="/dashboard/customers/{{$m.CustomerID}}">{{$m.CustomerName}}</a></dd>
+    <dt>Status</dt><dd><span class="status {{$m.Status}}">{{$m.Status}}</span> {{with $m.FailureReason}}({{deref .}}){{end}}</dd>
+    <dt>Type</dt><dd>{{$m.Type}}{{if $m.SLABreached}} — <span class="status failed">SLA breached</span>{{end}}</dd>
+    <dt>To</dt><dd>{{$m.Recipient}}</dd>
+    <dt>Text</dt><dd class="text">{{$m.Body}}</dd>
+    <dt>Encoding</dt><dd>{{$m.Encoding}}, {{$m.Segments}} segment(s), {{$m.Cost}} credit(s)</dd>
+    <dt>Attempts</dt><dd>{{$m.Attempts}}</dd>
+    <dt>Provider</dt><dd>{{deref $m.Provider}} {{with $m.ProviderRef}}<code>{{deref .}}</code>{{end}}</dd>
+    <dt>Last error</dt><dd>{{deref $m.LastError}}</dd>
+    <dt>Client ref</dt><dd>{{deref $m.ClientRef}}</dd>
+    <dt>Accepted</dt><dd>{{ts $m.AcceptedAt}}</dd>
+    <dt>Sent</dt><dd>{{tsp $m.SentAt}}</dd>
+    <dt>Completed</dt><dd>{{tsp $m.CompletedAt}}</dd>
+    <dt>Expires</dt><dd>{{ts $m.ExpiresAt}}</dd>
+  </dl>
+</section>
+<section class="card">
+  <h2>Queue</h2>
+  {{with $m.Queue}}
+  <dl>
+    <dt>Lane</dt><dd>{{.Lane}}</dd>
+    <dt>Next attempt</dt><dd>{{ts .NextAttemptAt}}</dd>
+    <dt>Lease owner</dt><dd>{{deref .LeaseOwner}}</dd>
+  </dl>
+  {{else}}<p class="empty">Not queued.</p>{{end}}
+</section>
+{{end}}

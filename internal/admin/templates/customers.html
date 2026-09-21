@@ -1,0 +1,28 @@
+{{define "content"}}
+<section class="card">
+  <h2>New customer</h2>
+  <form method="post" action="/dashboard/customers" class="inline">
+    <label>Name <input name="name" required maxlength="100"></label>
+    <label>Initial credits <input name="initial_credits" type="number" min="0" value="0"></label>
+    <label>Rate limit (msg/s) <input name="rate_limit_rps" type="number" min="1" value="{{.DefaultRateLimit}}"></label>
+    <button>Create</button>
+  </form>
+</section>
+
+<table>
+  <thead><tr><th>Name</th><th>Key</th><th class="num">Balance</th><th class="num">Rate limit</th><th>Created</th></tr></thead>
+  <tbody>
+  {{range .Customers}}
+    <tr>
+      <td><a href="/dashboard/customers/{{.ID}}">{{.Name}}</a></td>
+      <td><code>{{.APIKeyPrefix}}…</code></td>
+      <td class="num">{{.Balance}}</td>
+      <td class="num">{{.RateLimitRPS}}</td>
+      <td>{{ts .CreatedAt}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="5" class="empty">No customers yet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}

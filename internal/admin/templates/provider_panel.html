@@ -1,0 +1,26 @@
+{{with .Error}}<p class="notice error">{{.}}</p>{{end}}
+{{with .Stats}}
+<section class="grid">
+  <div class="card stat"><span>Received</span><strong>{{.Received}}</strong></div>
+  <div class="card stat"><span>Accepted</span><strong>{{.Accepted}}</strong></div>
+  <div class="card stat"><span>Duplicates</span><strong>{{.Duplicates}}</strong></div>
+  <div class="card stat"><span>Rejected</span><strong>{{.Rejected}}</strong></div>
+  <div class="card stat"><span>Failed</span><strong>{{.Failed}}</strong></div>
+  <div class="card stat"><span>Timed out</span><strong>{{.TimedOut}}</strong></div>
+  <div class="card stat"><span>Outage</span><strong>{{.Outage}}</strong></div>
+  <div class="card stat"><span>DLRs sent / pending / failed</span><strong>{{.DLRSent}} / {{.DLRPending}} / {{.DLRFailed}}</strong></div>
+</section>
+{{end}}
+<section class="card">
+  <h2>Received messages</h2>
+  <table>
+    <thead><tr><th>Received</th><th>ID</th><th>To</th><th>Text</th><th>Result</th><th>DLR</th><th class="num">Duplicates</th></tr></thead>
+    <tbody>
+    {{range .Messages.Data}}
+      <tr><td>{{.received_at}}</td><td><a href="/dashboard/messages/{{.id}}"><code>{{.id}}</code></a></td><td>{{.to}}</td>
+          <td class="text">{{.text}}</td><td><span class="status {{.result}}">{{.result}}</span></td>
+          <td>{{with .dlr_status}}<span class="status {{.}}">{{.}}</span>{{end}}</td><td class="num">{{.duplicates}}</td></tr>
+    {{else}}<tr><td colspan="7" class="empty">Nothing received yet.</td></tr>{{end}}
+    </tbody>
+  </table>
+</section>

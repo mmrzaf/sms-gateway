@@ -1,0 +1,22 @@
+{{define "content"}}
+<nav class="tabs">{{range .Providers}}<a href="/dashboard/providers/{{.}}" {{if eq . $.Name}}class="active"{{end}}>{{.}}</a>{{end}}</nav>
+{{with .Error}}<p class="notice error">{{.}}</p>{{end}}
+{{with .Settings}}
+<section class="card">
+  <h2>Simulation</h2>
+  <form method="post" action="/dashboard/providers/{{$.Name}}/config" class="inline">
+    <label>Latency ms <input name="latency_ms" type="number" min="0" max="60000" value="{{.LatencyMS}}"></label>
+    <label>Jitter ms <input name="jitter_ms" type="number" min="0" max="60000" value="{{.JitterMS}}"></label>
+    <label>Failure rate <input name="failure_rate" type="number" min="0" max="1" step="0.01" value="{{.FailureRate}}"></label>
+    <label>Timeout rate <input name="timeout_rate" type="number" min="0" max="1" step="0.01" value="{{.TimeoutRate}}"></label>
+    <label>Reject rate <input name="reject_rate" type="number" min="0" max="1" step="0.01" value="{{.RejectRate}}"></label>
+    <label>Delivery ratio <input name="delivery_ratio" type="number" min="0" max="1" step="0.01" value="{{.DeliveryRatio}}"></label>
+    <label>DLR delay ms <input name="dlr_delay_ms" type="number" min="0" max="60000" value="{{.DLRDelayMS}}"></label>
+    <label>DLR jitter ms <input name="dlr_jitter_ms" type="number" min="0" max="60000" value="{{.DLRJitterMS}}"></label>
+    <label class="check"><input name="outage" type="checkbox" {{if .Outage}}checked{{end}}> Outage</label>
+    <button>Apply</button>
+  </form>
+</section>
+{{end}}
+<div data-poll="/dashboard/providers/{{.Name}}/panel"><p class="empty">Loading…</p></div>
+{{end}}

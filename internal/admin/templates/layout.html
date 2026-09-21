@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · SMS Gateway</title>
+  <link rel="stylesheet" href="/dashboard/static/app.css">
+</head>
+<body>
+  <header>
+    <strong>SMS Gateway</strong>
+    <nav>
+      <a href="/dashboard/customers" {{if eq .Nav "customers"}}class="active"{{end}}>Customers</a>
+      <a href="/dashboard/messages" {{if eq .Nav "messages"}}class="active"{{end}}>Messages</a>
+      <a href="/dashboard/system" {{if eq .Nav "system"}}class="active"{{end}}>System</a>
+      <a href="/dashboard/providers" {{if eq .Nav "providers"}}class="active"{{end}}>Providers</a>
+    </nav>
+  </header>
+  <main>
+    <h1>{{.Title}}</h1>
+    {{template "content" .}}
+  </main>
+  <script src="/dashboard/static/app.js"></script>
+</body>
+</html>

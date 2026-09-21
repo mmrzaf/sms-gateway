@@ -49,7 +49,7 @@ Errors use the envelope described in [API conventions](010-conventions.md#errors
 }
 ```
 
-`stats_24h` covers messages accepted in the last 24 hours. The list endpoint returns customers without `stats_24h`, ordered by name, paginated with `limit` and `cursor`.
+`stats_24h` covers messages accepted in the last 24 hours. The list endpoint returns customers without `stats_24h`, newest first, paginated with `limit` and `cursor`.
 
 **POST /admin/api/customers**
 
@@ -121,11 +121,15 @@ Creates a `charge` transaction with `client_ref` `admin-<uuid>`. Response `201`:
     {
       "id": "gw-worker-1-7-a3f9",
       "role": "worker",
+      "started_at": "2026-09-21T09:00:00.000Z",
       "last_seen": "2026-09-21T10:15:28.000Z",
       "stale": false,
-      "pools": { "express": { "concurrency": 64, "in_flight": 4 }, "normal": { "concurrency": 256, "in_flight": 200 } },
-      "circuits": { "A": "closed", "B": "closed" },
-      "rates_per_s": { "sent": 1840.2, "retried": 3.1, "deferred": 0, "failed": 0.2, "expired": 0 }
+      "stats": {
+        "pools": { "express": { "concurrency": 64, "in_flight": 4 }, "normal": { "concurrency": 256, "in_flight": 200 } },
+        "counters": { "sent": 918233, "retried": 1204, "deferred": 0, "failed": 17, "expired": 0 },
+        "rates_per_s": { "sent": 1840.2, "retried": 3.1, "deferred": 0, "failed": 0.2, "expired": 0 },
+        "circuits": { "A": "closed", "B": "closed" }
+      }
     }
   ],
   "throughput_per_s": { "accepted": 2011.5 },
@@ -136,9 +140,9 @@ Creates a `charge` transaction with `client_ref` `admin-<uuid>`. Response `201`:
 | Field | Source |
 |---|---|
 | `queue` | Grouped count of `queue` by lane and derived state. Lanes with no rows are listed with zeros. |
-| `workers` | `workers` table; `stale` when `last_seen` is older than 15 seconds; rates from counter deltas between the two latest heartbeats. |
+| `workers` | `workers` table; `stale` when `last_seen` is older than 15 seconds. `stats` is the worker's own heartbeat document, including `rates_per_s`, which the worker computes from its counters between consecutive heartbeats. |
 | `throughput_per_s.accepted` | Messages whose ID falls in the last 60 seconds, divided by 60. |
-| `express_latency_s` | Percentiles of `sent_at - accepted_at` for Express messages accepted in the last 5 minutes. |
+| `express_latency_s` | Percentiles of `sent_at - accepted_at` for Express messages accepted in the last 5 minutes that have been sent, and the number of those messages flagged as SLA breaches. |
 
 ## Invariants
 

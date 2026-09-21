@@ -32,7 +32,8 @@ How the Go codebase is laid out, what each package owns, and which dependencies 
 │   ├── heartbeat/            worker registration and stats
 │   ├── admin/                admin API, dashboard handlers and templates
 │   ├── invariant/            invariant checks
-│   ├── metrics/              Prometheus collectors
+│   ├── metrics/              Prometheus text-format metrics and every metric definition
+│   ├── monitor/              queue, worker, throughput, and latency queries for operators
 │   ├── fakeprovider/         fake provider server, simulation, DLR sender
 │   └── testutil/             test database and fixtures (tests only)
 ├── migrations/               SQL migrations, embedded in the binary
@@ -94,7 +95,7 @@ flowchart TD
     cmd --> app
     app --> api & admin & dlr & dispatch & sweeper & heartbeat
     api --> message & billing & auth & ratelimit & httpx
-    admin --> message & billing & customer & invariant & httpx
+    admin --> message & billing & customer & invariant & monitor & httpx
     customer --> billing & auth
     message --> billing & segment & store
     dispatch --> message & billing & store
@@ -119,9 +120,9 @@ flowchart TD
 | UUIDv7 | `github.com/google/uuid` |
 | Rate limiting | `golang.org/x/time/rate` |
 | Bounded concurrency | `golang.org/x/sync/errgroup` |
-| Metrics | `github.com/prometheus/client_golang` |
+| Metrics | In-repo `metrics` package: counters, gauges, and histograms in the Prometheus text format (about 300 lines, no dependencies) |
 | Logging | Standard library `log/slog`, JSON handler |
-| Dashboard | Standard library `html/template`, htmx, assets embedded with `embed` |
+| Dashboard | Standard library `html/template`, plain HTML forms, and a 30-line script that refreshes live panels; assets embedded with `embed` |
 | Integration tests | Any PostgreSQL reachable through `TEST_DATABASE_URL`; each test runs in its own schema |
 | Load tests | k6 |
 

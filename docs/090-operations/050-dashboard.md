@@ -6,8 +6,8 @@ The internal operator console: what each page shows, where its data comes from, 
 
 - Served by the API role on the admin port at `/dashboard`.
 - Protected by HTTP basic authentication (user `admin`, password `ADMIN_TOKEN`).
-- Server-rendered with `html/template`; htmx refreshes live panels every 2 seconds by requesting HTML fragments. There is no separate frontend build.
-- Every page is backed by the [Admin API](../050-api/030-admin-api.md); the dashboard adds no data access of its own.
+- Server-rendered with `html/template`. Actions are plain HTML forms that post to the dashboard and redirect back (post/redirect/get). Live panels (system overview, provider counters and messages) are HTML fragments that a small embedded script refreshes every 2 seconds. There is no frontend build and no JavaScript dependency.
+- Pages use the same domain functions as the [Admin API](../050-api/030-admin-api.md); the dashboard contains no SQL of its own.
 
 ## Pages
 
@@ -36,7 +36,7 @@ The internal operator console: what each page shows, where its data comes from, 
 | Workers | One card per worker: pools and in-flight counts, circuit state per provider, rates of sent, retried, deferred, failed, expired; stale workers highlighted | `workers` table |
 | Throughput | Accepted messages per second | Messages accepted in the last minute |
 | Express | p50, p95, p99 accept-to-sent latency over 5 minutes; SLA breaches | Recent Express messages |
-| Invariants | Button that runs the checker and shows each check's result | `GET /admin/api/invariants` |
+| Invariants | Button that runs the checker and shows each check's result | The invariant checker |
 
 ### Providers
 

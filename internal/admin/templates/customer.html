@@ -1,0 +1,78 @@
+{{define "content"}}
+{{with .NewKey}}
+<p class="notice">API key, shown only now: <code class="select">{{.}}</code></p>
+{{end}}
+{{$c := .Customer}}
+<section class="grid">
+  <div class="card stat"><span>Balance</span><strong>{{$c.Balance}}</strong></div>
+  <div class="card stat"><span>Rate limit</span><strong>{{$c.RateLimitRPS}} msg/s</strong></div>
+  <div class="card stat"><span>Messages, 24 h</span><strong>{{$c.Stats24h.Messages}}</strong></div>
+  <div class="card stat"><span>Credits spent, 24 h</span><strong>{{$c.Stats24h.CreditsSpent}}</strong></div>
+</section>
+
+<section class="card">
+  <h2>Last 24 hours by status</h2>
+  <table>
+    <tr>{{range .Statuses}}<th class="num">{{.}}</th>{{end}}</tr>
+    <tr>{{range .Statuses}}<td class="num">{{index $c.Stats24h.ByStatus (print .)}}</td>{{end}}</tr>
+  </table>
+</section>
+
+<section class="card actions">
+  <form method="post" action="/dashboard/customers/{{$c.ID}}/update" class="inline">
+    <label>Name <input name="name" value="{{$c.Name}}" maxlength="100"></label>
+    <label>Rate limit <input name="rate_limit_rps" type="number" min="1" value="{{$c.RateLimitRPS}}"></label>
+    <button>Save</button>
+  </form>
+  <form method="post" action="/dashboard/customers/{{$c.ID}}/credits" class="inline">
+    <label>Credits <input name="amount" type="number" min="1" required></label>
+    <button>Add credits</button>
+  </form>
+  <form method="post" action="/dashboard/customers/{{$c.ID}}/rotate-key" class="inline"
+        data-confirm="Rotate the API key? The current key stops working within 30 seconds.">
+    <span>Key <code>{{$c.APIKeyPrefix}}…</code></span>
+    <button>Rotate key</button>
+  </form>
+  <form method="post" action="/dashboard/customers/{{$c.ID}}/delete" class="inline"
+        data-confirm="Delete {{$c.Name}} with all messages and transactions?">
+    <button class="danger">Delete customer</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Recent transactions</h2>
+  <table>
+    <thead><tr><th>Time</th><th>Kind</th><th class="num">Amount</th><th>Message</th><th>Reference</th></tr></thead>
+    <tbody>
+    {{range .Transactions}}
+      <tr>
+        <td>{{ts .CreatedAt}}</td><td>{{.Kind}}</td><td class="num">{{.Amount}}</td>
+        <td>{{with .MessageID}}<a href="/dashboard/messages/{{.}}"><code>{{.}}</code></a>{{end}}</td>
+        <td>{{deref .ClientRef}}</td>
+      </tr>
+    {{else}}<tr><td colspan="5" class="empty">No transactions.</td></tr>{{end}}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>Recent messages <a class="more" href="/dashboard/messages?customer_id={{$c.ID}}">all</a></h2>
+  {{template "message_rows" .Messages}}
+</section>
+{{end}}
+
+{{define "message_rows"}}
+<table>
+  <thead><tr><th>Accepted</th><th>Type</th><th>To</th><th class="num">Segments</th><th class="num">Cost</th><th>Status</th><th class="num">Attempts</th><th>Sent</th></tr></thead>
+  <tbody>
+  {{range .}}
+    <tr>
+      <td><a href="/dashboard/messages/{{.ID}}">{{ts .AcceptedAt}}</a></td>
+      <td>{{.Type}}</td><td>{{.Recipient}}</td><td class="num">{{.Segments}}</td><td class="num">{{.Cost}}</td>
+      <td><span class="status {{.Status}}">{{.Status}}</span>{{if .SLABreached}} <span class="status failed">SLA</span>{{end}}</td>
+      <td class="num">{{.Attempts}}</td><td>{{tsp .SentAt}}</td>
+    </tr>
+  {{else}}<tr><td colspan="8" class="empty">No messages.</td></tr>{{end}}
+  </tbody>
+</table>
+{{end}}

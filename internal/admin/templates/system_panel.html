@@ -1,0 +1,36 @@
+<section class="grid">
+  <div class="card stat"><span>Accepted</span><strong>{{rate .Throughput.accepted}} msg/s</strong></div>
+  <div class="card stat"><span>Express p50</span><strong>{{sec .ExpressLatency.P50}}</strong></div>
+  <div class="card stat"><span>Express p95</span><strong>{{sec .ExpressLatency.P95}}</strong></div>
+  <div class="card stat"><span>Express p99</span><strong>{{sec .ExpressLatency.P99}}</strong></div>
+  <div class="card stat"><span>SLA breaches, {{.ExpressLatency.Window}}</span><strong>{{.ExpressLatency.SLABreaches}}</strong></div>
+</section>
+
+<section class="card">
+  <h2>Queue</h2>
+  <table>
+    <thead><tr><th>Lane</th><th class="num">Ready</th><th class="num">Delayed</th><th class="num">In flight</th><th class="num">Oldest ready</th></tr></thead>
+    <tbody>
+    {{range .Queue}}
+      <tr><td>{{.Lane}}</td><td class="num">{{.Ready}}</td><td class="num">{{.Delayed}}</td><td class="num">{{.InFlight}}</td><td class="num">{{sec .OldestReadyAge}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>Workers</h2>
+  <div class="grid">
+  {{range .WorkerStats}}
+    <div class="card worker {{if .Stale}}stale{{end}}">
+      <h3><code>{{.ID}}</code>{{if .Stale}} <span class="status failed">stale</span>{{end}}</h3>
+      <p class="muted">last seen {{ts .LastSeen}}</p>
+      <p>{{range $name, $p := .Stats.Pools}}{{$name}}: {{$p.InFlight}}/{{$p.Concurrency}} in flight<br>{{end}}</p>
+      <p>{{range $name, $state := .Stats.Circuits}}{{$name}} <span class="status circuit-{{$state}}">{{$state}}</span> {{end}}</p>
+      <p class="muted">{{range $k, $v := .Stats.Rates}}{{$k}} {{rate $v}}/s · {{end}}</p>
+    </div>
+  {{else}}
+    <p class="empty">No workers are running.</p>
+  {{end}}
+  </div>
+</section>

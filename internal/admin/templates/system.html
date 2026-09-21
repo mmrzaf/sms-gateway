@@ -1,0 +1,21 @@
+{{define "content"}}
+<div data-poll="/dashboard/system/panel"></div>
+
+<section class="card">
+  <h2>Invariants</h2>
+  <form method="get" action="/dashboard/system"><input type="hidden" name="check" value="1"><button>Run checks</button></form>
+  {{with .Invariants}}
+  <p class="notice {{if not .OK}}error{{end}}">{{if .OK}}All checks passed{{else}}Some checks failed{{end}} at {{ts .CheckedAt}}.</p>
+  <table>
+    <thead><tr><th>Result</th><th>Check</th><th class="num">Violations</th><th>Sample</th></tr></thead>
+    <tbody>
+    {{range .Checks}}
+      <tr><td><span class="status {{if .OK}}delivered{{else}}failed{{end}}">{{if .OK}}pass{{else}}fail{{end}}</span></td>
+          <td title="{{.Description}}">{{.Name}}</td><td class="num">{{.Violations}}</td>
+          <td>{{range .Sample}}<code>{{.}}</code> {{end}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{end}}
+</section>
+{{end}}

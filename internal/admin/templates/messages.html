@@ -1,0 +1,39 @@
+{{define "content"}}
+<form method="get" action="/dashboard/messages" class="card inline">
+  <label>Customer
+    <select name="customer_id">
+      <option value="">All (last 24 h)</option>
+      {{range .Customers}}<option value="{{.ID}}" {{if eq .ID $.Filter.CustomerID}}selected{{end}}>{{.Name}}</option>{{end}}
+    </select>
+  </label>
+  <label>Status
+    <select name="status">
+      <option value="">Any</option>
+      {{range .Statuses}}<option {{if eq . $.Filter.Status}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </label>
+  <label>Type
+    <select name="type">
+      <option value="">Any</option>
+      <option {{if eq "normal" (print $.Filter.Type)}}selected{{end}}>normal</option>
+      <option {{if eq "express" (print $.Filter.Type)}}selected{{end}}>express</option>
+    </select>
+  </label>
+  <button>Filter</button>
+</form>
+<table>
+  <thead><tr><th>Accepted</th><th>Customer</th><th>Type</th><th>To</th><th class="num">Cost</th><th>Status</th><th class="num">Attempts</th><th>Provider</th></tr></thead>
+  <tbody>
+  {{range .Messages}}
+    <tr>
+      <td><a href="/dashboard/messages/{{.ID}}">{{ts .AcceptedAt}}</a></td>
+      <td><a href="/dashboard/customers/{{.CustomerID}}">{{.CustomerName}}</a></td>
+      <td>{{.Type}}</td><td>{{.Recipient}}</td><td class="num">{{.Cost}}</td>
+      <td><span class="status {{.Status}}">{{.Status}}</span>{{if .SLABreached}} <span class="status failed">SLA</span>{{end}}</td>
+      <td class="num">{{.Attempts}}</td><td>{{deref .Provider}}</td>
+    </tr>
+  {{else}}<tr><td colspan="8" class="empty">No messages match.</td></tr>{{end}}
+  </tbody>
+</table>
+{{with .Next}}<p><a href="{{.}}">Older messages</a></p>{{end}}
+{{end}}
