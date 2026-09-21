@@ -6,7 +6,11 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/mmrzaf/sms-gatway/internal/api"
+	"github.com/mmrzaf/sms-gatway/internal/auth"
 	"github.com/mmrzaf/sms-gatway/internal/httpx"
+	"github.com/mmrzaf/sms-gatway/internal/message"
+	"github.com/mmrzaf/sms-gatway/internal/ratelimit"
 )
 
 // startAPI runs the public server (customer API) and the admin server
@@ -16,10 +20,28 @@ func startAPI(ctx context.Context, g *errgroup.Group, d deps) {
 	serve(ctx, g, d, "admin", d.cfg.AdminAddr, adminHandler(d))
 }
 
+// newMessageService builds the message service from configuration.
+func newMessageService(d deps) *message.Service {
+	return message.NewService(d.pool, message.Config{
+		Prices:      message.Prices{Normal: d.cfg.API.PriceNormal, Express: d.cfg.API.PriceExpress},
+		MaxSegments: d.cfg.API.MaxSegments,
+		NormalLanes: d.cfg.Dispatch.NormalLanes,
+		NormalTTL:   d.cfg.Normal.TTL,
+		ExpressTTL:  d.cfg.Express.TTL,
+	})
+}
+
 func publicHandler(d deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", httpx.Healthz)
 	mux.Handle("GET /readyz", httpx.Readyz(d.ready))
+
+	server := api.New(d.pool,
+		newMessageService(d),
+		auth.NewAuthenticator(d.pool, d.cfg.API.KeyCacheTTL),
+		ratelimit.New(d.cfg.API.Instances))
+	server.Register(mux)
+
 	mux.HandleFunc("/", httpx.NotFound)
 	return mux
 }

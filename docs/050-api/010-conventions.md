@@ -69,7 +69,7 @@ Every error uses one envelope:
 | 500 | `internal_error` | Unexpected failure; safe to retry with the same `client_ref` |
 | 503 | `unavailable` | The database is unreachable; safe to retry with the same `client_ref` |
 
-Field error codes in `details`: `required`, `invalid_format`, `out_of_range`, `too_many_items`, `duplicate`, `text_too_long`, `invalid_text`.
+Field error codes in `details`: `required`, `invalid_format`, `out_of_range`, `too_many_items`, `duplicate`, `text_too_long`, `invalid_text`, and `conflict` (for `409 idempotency_conflict`, naming each conflicting `client_ref`).
 
 ## Pagination
 
