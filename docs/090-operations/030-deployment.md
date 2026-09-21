@@ -41,7 +41,7 @@ flowchart LR
 | `provider-a` | `provider` with `PROVIDER_NAME=A` | — | `provider probe http://localhost:9001/healthz` |
 | `provider-b` | `provider` with `PROVIDER_NAME=B`, `PROVIDER_ADDR=:9002` | — | `provider probe http://localhost:9002/healthz` |
 
-Only ports 8080 and 8081 are published to the host by default; 9001 and 9002 are published for local inspection of the providers. Configuration comes from `deploy/.env`; `deploy/.env.example` documents every variable with its local default.
+Ports 8080 and 8081 are published to the host, and 9001, 9002, and 5432 are published for local inspection of the providers and the database. In any shared environment only 8080 is exposed. Configuration comes from `deploy/.env`; `deploy/.env.example` documents every variable with its local default.
 
 `deploy/docker-compose.bench.yml` is an override used by `make bench`: it runs two worker instances, raises PostgreSQL memory settings, and sets the providers' latency and failure rates to zero.
 

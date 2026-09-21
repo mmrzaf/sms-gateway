@@ -162,7 +162,7 @@ Creates a `charge` transaction with `client_ref` `admin-<uuid>`. Response `201`:
 
 ## Providers
 
-`{name}` is a provider name from `PROVIDERS` (`A` or `B`). These endpoints forward to the provider's own admin API (see [Internal and provider APIs](040-internal-and-provider-api.md)) and return its response unchanged. An unreachable provider returns `502` with code `provider_unreachable`.
+`{name}` is a provider name from `PROVIDERS` (`A` or `B`). These endpoints forward to the provider's own admin API (see [Internal and provider APIs](040-internal-and-provider-api.md)) and return its response unchanged. A name that is not configured returns `404`; an unreachable provider returns `502` with code `provider_unreachable`.
 
 ## Related
 

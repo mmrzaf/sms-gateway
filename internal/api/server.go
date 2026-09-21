@@ -16,6 +16,12 @@ import (
 	"github.com/mmrzaf/sms-gatway/internal/ratelimit"
 )
 
+// Page size bounds for list endpoints.
+const (
+	defaultLimit = 50
+	maxLimit     = 200
+)
+
 // Server serves the customer API.
 type Server struct {
 	db       *pgxpool.Pool

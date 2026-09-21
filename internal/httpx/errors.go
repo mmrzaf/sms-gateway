@@ -14,7 +14,6 @@ const (
 	CodeUnauthorized         = "unauthorized"
 	CodeInsufficientCredits  = "insufficient_credits"
 	CodeNotFound             = "not_found"
-	CodeMethodNotAllowed     = "method_not_allowed"
 	CodeIdempotencyConflict  = "idempotency_conflict"
 	CodePayloadTooLarge      = "payload_too_large"
 	CodeUnsupportedMediaType = "unsupported_media_type"

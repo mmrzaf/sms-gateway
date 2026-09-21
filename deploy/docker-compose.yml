@@ -15,9 +15,6 @@ x-provider: &provider
   image: sms-gateway:local
   command: ["provider", "serve"]
   restart: unless-stopped
-  depends_on:
-    migrate:
-      condition: service_completed_successfully
 
 x-provider-env: &provider-env
   GATEWAY_DLR_URL: http://gateway-api:8081/internal/dlr
