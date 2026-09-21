@@ -31,9 +31,9 @@ type summaryTypeResponse struct {
 }
 
 func (s *Server) summary(w http.ResponseWriter, r *http.Request, c auth.Customer) error {
-	q := newQuery(r.URL.Query())
-	since, until := q.time("since"), q.time("until")
-	if err := q.err(); err != nil {
+	q := httpx.NewQuery(r.URL.Query())
+	since, until := q.Time("since"), q.Time("until")
+	if err := q.Err(); err != nil {
 		return err
 	}
 	if until.IsZero() {

@@ -10,6 +10,7 @@ import (
 	"github.com/mmrzaf/sms-gatway/internal/billing"
 	"github.com/mmrzaf/sms-gatway/internal/httpx"
 	"github.com/mmrzaf/sms-gatway/internal/message"
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 )
 
 type balanceResponse struct {
@@ -91,6 +92,8 @@ func (s *Server) charge(w http.ResponseWriter, r *http.Request, c auth.Customer)
 	}
 	if res.Replayed {
 		w.Header().Set(replayedHeader, "true")
+	} else {
+		metrics.CreditsCharged.Add(float64(*req.Amount))
 	}
 	httpx.WriteJSON(w, http.StatusCreated, chargeResponse{
 		Transaction: toTransactionResponse(res.Transaction),
@@ -100,22 +103,22 @@ func (s *Server) charge(w http.ResponseWriter, r *http.Request, c auth.Customer)
 }
 
 func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request, c auth.Customer) error {
-	q := newQuery(r.URL.Query())
+	q := httpx.NewQuery(r.URL.Query())
 	f := billing.TransactionFilter{
-		Since: q.time("since"),
-		Until: q.time("until"),
-		After: q.cursor(),
-		Limit: q.limit(),
+		Since: q.Time("since"),
+		Until: q.Time("until"),
+		After: q.Cursor(),
+		Limit: q.Limit(defaultLimit, maxLimit),
 	}
-	if v := q.string("kind"); v != "" {
+	if v := q.String("kind"); v != "" {
 		k, ok := billing.ParseKind(v)
 		if !ok {
-			q.fail("kind", message.CodeInvalidFormat, "must be charge, debit, or refund")
+			q.Fail("kind", httpx.FieldInvalidFormat, "must be charge, debit, or refund")
 		}
 		f.Kind = k
 	}
-	q.timeRange(f.Since, f.Until)
-	if err := q.err(); err != nil {
+	q.TimeRange(f.Since, f.Until)
+	if err := q.Err(); err != nil {
 		return err
 	}
 
@@ -127,6 +130,6 @@ func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request, c auth
 	for i, t := range list {
 		data[i] = toTransactionResponse(t)
 	}
-	httpx.WriteJSON(w, http.StatusOK, newPage(data, more, func() uuid.UUID { return list[len(list)-1].ID }))
+	httpx.WriteJSON(w, http.StatusOK, httpx.NewPage(data, more, func() uuid.UUID { return list[len(list)-1].ID }))
 	return nil
 }

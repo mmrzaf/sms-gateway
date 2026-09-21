@@ -11,6 +11,7 @@ import (
 	"github.com/mmrzaf/sms-gatway/internal/auth"
 	"github.com/mmrzaf/sms-gatway/internal/httpx"
 	"github.com/mmrzaf/sms-gatway/internal/message"
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 )
 
 // replayedHeader marks a response that repeats an earlier result.
@@ -88,6 +89,8 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request, c auth.Cust
 	}
 	if replayed {
 		w.Header().Set(replayedHeader, "true")
+	} else {
+		recordAccepted(m)
 	}
 	httpx.WriteJSON(w, http.StatusAccepted, toMessageResponse(m))
 	return nil
@@ -120,6 +123,10 @@ func (s *Server) sendBatch(w http.ResponseWriter, r *http.Request, c auth.Custom
 	}
 	if res.Replayed {
 		w.Header().Set(replayedHeader, "true")
+	} else {
+		for _, m := range res.Messages {
+			recordAccepted(m)
+		}
 	}
 	out := batchResponse{Messages: make([]messageResponse, len(res.Messages)), TotalCost: res.TotalCost}
 	for i, m := range res.Messages {
@@ -143,33 +150,33 @@ func (s *Server) getMessage(w http.ResponseWriter, r *http.Request, c auth.Custo
 }
 
 func (s *Server) listMessages(w http.ResponseWriter, r *http.Request, c auth.Customer) error {
-	q := newQuery(r.URL.Query())
+	q := httpx.NewQuery(r.URL.Query())
 	f := message.Filter{
-		Recipient: q.string("recipient"),
-		Since:     q.time("since"),
-		Until:     q.time("until"),
-		After:     q.cursor(),
-		Limit:     q.limit(),
+		Recipient: q.String("recipient"),
+		Since:     q.Time("since"),
+		Until:     q.Time("until"),
+		After:     q.Cursor(),
+		Limit:     q.Limit(defaultLimit, maxLimit),
 	}
-	if v := q.string("status"); v != "" {
+	if v := q.String("status"); v != "" {
 		st, ok := message.ParseStatus(v)
 		if !ok {
-			q.fail("status", message.CodeInvalidFormat, "must be a message status")
+			q.Fail("status", httpx.FieldInvalidFormat, "must be a message status")
 		}
 		f.Status = st
 	}
-	if v := q.string("type"); v != "" {
+	if v := q.String("type"); v != "" {
 		t, ok := message.ParseType(v)
 		if !ok {
-			q.fail("type", message.CodeInvalidFormat, "must be normal or express")
+			q.Fail("type", httpx.FieldInvalidFormat, "must be normal or express")
 		}
 		f.Type = t
 	}
 	if f.Recipient != "" && !message.ValidRecipient(f.Recipient) {
-		q.fail("recipient", message.CodeInvalidFormat, "must be an E.164 phone number")
+		q.Fail("recipient", httpx.FieldInvalidFormat, "must be an E.164 phone number")
 	}
-	q.timeRange(f.Since, f.Until)
-	if err := q.err(); err != nil {
+	q.TimeRange(f.Since, f.Until)
+	if err := q.Err(); err != nil {
 		return err
 	}
 
@@ -181,7 +188,7 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request, c auth.Cus
 	for i, m := range list {
 		data[i] = toMessageResponse(m)
 	}
-	httpx.WriteJSON(w, http.StatusOK, newPage(data, more, func() uuid.UUID { return list[len(list)-1].ID }))
+	httpx.WriteJSON(w, http.StatusOK, httpx.NewPage(data, more, func() uuid.UUID { return list[len(list)-1].ID }))
 	return nil
 }
 
@@ -194,9 +201,15 @@ func (s *Server) rateLimit(w http.ResponseWriter, c auth.Customer, n int) error 
 	if d.Allowed {
 		return nil
 	}
+	metrics.RateLimited.Add(float64(n))
 	w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(d.RetryAfter)))
 	return httpx.NewError(http.StatusTooManyRequests, httpx.CodeRateLimited,
 		"The message rate limit was exceeded. Retry after the time in the Retry-After header.")
+}
+
+func recordAccepted(m message.Message) {
+	metrics.MessagesAccepted.With(string(m.Type)).Inc()
+	metrics.CreditsDebited.Add(float64(m.Cost))
 }
 
 // retryAfterSeconds rounds a wait up to whole seconds, between 1 and 60.
