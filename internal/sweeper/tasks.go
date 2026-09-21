@@ -34,14 +34,18 @@ func (s *Sweeper) expire(ctx context.Context, tx pgx.Tx) (int, error) {
 		    updated_at = now()
 		FROM due
 		WHERE m.id = due.message_id AND m.status = 'accepted'
-		RETURNING m.id, m.customer_id, m.cost`,
+		RETURNING m.id, m.customer_id, m.cost, m.type, m.accepted_at`,
 		s.cfg.BatchSize)
 	if err != nil {
 		return 0, fmt.Errorf("expire messages: %w", err)
 	}
 	refunds, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (billing.Refund, error) {
 		var r billing.Refund
-		err := row.Scan(&r.MessageID, &r.CustomerID, &r.Amount)
+		var e expiredMessage
+		var typ string
+		err := row.Scan(&r.MessageID, &r.CustomerID, &r.Amount, &typ, &e.acceptedAt)
+		e.typ, e.cost = message.Type(typ), r.Amount
+		s.expired = append(s.expired, e)
 		return r, err
 	})
 	if err != nil {

@@ -4,7 +4,7 @@ The metrics, logs, and health signals the system exposes, and how to read them.
 
 ## Metrics
 
-Every process serves Prometheus metrics at `/metrics`: the API role on the admin port, the worker role on the worker port, providers on their own port. Standard Go runtime and process metrics are included.
+Every process serves Prometheus metrics at `/metrics`: the API role on the admin port, the worker role on the worker port, providers on their own port. The exposition is produced by the in-repo `metrics` package in the standard Prometheus text format; `go_goroutines` and `go_memstats_heap_alloc_bytes` are included.
 
 ### API
 
@@ -33,9 +33,9 @@ Every process serves Prometheus metrics at `/metrics`: the API role on the admin
 | `sms_claim_size` | histogram | `pool` | Rows per claim |
 | `sms_completer_batch_size` | histogram | — | Outcomes per completer commit |
 | `sms_message_latency_seconds` | histogram | `type`, `stage` | Accept-to-`sent` and accept-to-terminal latency |
-| `sms_express_sla_breaches_total` | counter | — | Express messages flagged as breached |
-| `sms_queue_depth` | gauge | `lane`, `state` | Rows per lane and state, sampled by the sweeper |
-| `sms_queue_oldest_ready_seconds` | gauge | `lane` | Age of the oldest ready row, sampled by the sweeper |
+| `sms_express_sla_breaches_total` | counter | — | Express messages that ended dispatch with an SLA breach: sent after the SLA, or failed or expired |
+| `sms_queue_depth` | gauge | `lane`, `state` | Rows per lane and state (`ready`, `delayed`, `in_flight`), sampled by every worker each sweep |
+| `sms_queue_oldest_ready_seconds` | gauge | `lane` | How long the oldest ready row has been ready, sampled by every worker each sweep |
 
 ### Provider
 

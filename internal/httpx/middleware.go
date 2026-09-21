@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"regexp"
 	"runtime/debug"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 )
 
 // RequestIDHeader carries the request ID in both directions.
@@ -135,4 +138,23 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 // Unwrap lets http.ResponseController reach the underlying writer.
 func (s *statusRecorder) Unwrap() http.ResponseWriter {
 	return s.ResponseWriter
+}
+
+// WithRequestMetrics records the request count and latency per route
+// pattern. It must wrap the ServeMux directly, because the mux records the
+// matched pattern on the request it receives.
+func WithRequestMetrics() Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+			next.ServeHTTP(rec, r)
+			route := r.Pattern
+			if route == "" {
+				route = "unmatched"
+			}
+			metrics.APIRequests.With(route, strconv.Itoa(rec.status)).Inc()
+			metrics.APIRequestDuration.With(route).Observe(time.Since(start).Seconds())
+		})
+	}
 }

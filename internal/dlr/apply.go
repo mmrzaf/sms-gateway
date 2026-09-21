@@ -7,11 +7,13 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 	"github.com/mmrzaf/sms-gatway/internal/store"
 )
 
@@ -66,6 +68,11 @@ func Apply(ctx context.Context, db *pgxpool.Pool, reports []Report) ([]Outcome, 
 
 	applied := make(map[uuid.UUID]bool, n)
 	current := make(map[uuid.UUID]string, n)
+	type latency struct {
+		typ        string
+		acceptedAt time.Time
+	}
+	var latencies []latency
 	err := store.WithTx(ctx, db, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
 			UPDATE messages m
@@ -76,12 +83,19 @@ func Apply(ctx context.Context, db *pgxpool.Pool, reports []Report) ([]Outcome, 
 			    updated_at = now()
 			FROM unnest($1::uuid[], $2::text[], $3::text[], $4::text[]) AS r(id, status, provider, provider_ref)
 			WHERE m.id = r.id AND m.status IN ('accepted', 'sent')
-			RETURNING m.id`,
+			RETURNING m.id, m.type, m.accepted_at`,
 			ids, statuses, providers, refs)
 		if err != nil {
 			return fmt.Errorf("apply delivery reports: %w", err)
 		}
-		updated, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		latencies = latencies[:0]
+		updated, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (uuid.UUID, error) {
+			var id uuid.UUID
+			var l latency
+			err := row.Scan(&id, &l.typ, &l.acceptedAt)
+			latencies = append(latencies, l)
+			return id, err
+		})
 		if err != nil {
 			return fmt.Errorf("apply delivery reports: %w", err)
 		}
@@ -113,6 +127,10 @@ func Apply(ctx context.Context, db *pgxpool.Pool, reports []Report) ([]Outcome, 
 	})
 	if err != nil {
 		return nil, err
+	}
+	now := time.Now()
+	for _, l := range latencies {
+		metrics.MessageLatency.With(l.typ, "completed").Observe(now.Sub(l.acceptedAt).Seconds())
 	}
 
 	out := make([]Outcome, len(reports))

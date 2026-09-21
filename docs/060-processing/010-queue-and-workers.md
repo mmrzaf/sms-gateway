@@ -150,7 +150,7 @@ The sweeper runs every 10 seconds (`SWEEP_INTERVAL`) in every worker process. Ea
 | Remove orphans | Queue rows whose message is terminal and that are not in flight: delete. They appear when a DLR finalizes a message that was waiting for a retry. |
 | Reassign lanes | Queue rows in `normal-k` with `k >= NORMAL_LANES`: move to `normal-(hash mod NORMAL_LANES)`. Needed only after lowering `NORMAL_LANES`. |
 | Clean workers | Delete `workers` rows with `last_seen` older than 1 hour. |
-| Sample queue depth | Update the `sms_queue_depth{lane,state}` gauge. |
+| Sample queue depth | Update the `sms_queue_depth` and `sms_queue_oldest_ready_seconds` gauges. This task takes no lock: every worker samples, so each worker's metrics show the whole queue. |
 
 ## Shutdown
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mmrzaf/sms-gatway/internal/httpx"
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 )
 
 // SecretHeader carries the shared secret on delivery report callbacks.
@@ -31,9 +32,9 @@ func (p *Provider) scheduleDLR(messageID string, rec *record, s Settings) {
 	}
 	delay := p.jittered(s.DLRDelayMS, s.DLRJitterMS)
 
-	p.stats.dlrPending.Add(1)
+	metrics.ProviderDLRPending.Set(float64(p.stats.dlrPending.Add(1)))
 	go func() {
-		defer p.stats.dlrPending.Add(-1)
+		defer func() { metrics.ProviderDLRPending.Set(float64(p.stats.dlrPending.Add(-1))) }()
 		if !sleep(p.ctx, delay) {
 			return
 		}
@@ -46,6 +47,7 @@ func (p *Provider) scheduleDLR(messageID string, rec *record, s Settings) {
 		}
 		if p.deliver(rep) {
 			p.stats.dlrSent.Add(1)
+			metrics.ProviderDLRSent.With(status).Inc()
 			p.recent.update(rec, func(r *record) {
 				r.dlrStatus = status
 				r.dlrSentAt = time.Now()

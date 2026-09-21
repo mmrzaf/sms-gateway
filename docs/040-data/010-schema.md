@@ -207,11 +207,12 @@ Each worker process upserts its row every 5 seconds. `id` is `<hostname>-<pid>-<
     "normal":  { "concurrency": 256, "in_flight": 211 }
   },
   "counters": { "sent": 918233, "retried": 1204, "deferred": 0, "failed": 17, "expired": 0 },
+  "rates_per_s": { "sent": 1840.2, "retried": 3.1, "deferred": 0, "failed": 0.2, "expired": 0 },
   "circuits": { "A": "closed", "B": "closed" }
 }
 ```
 
-Counters are cumulative since the process started; the admin API derives rates from the difference between consecutive heartbeats.
+Counters are cumulative since the process started; `rates_per_s` is their increase per second since the previous heartbeat.
 
 ## Time-ordered IDs
 

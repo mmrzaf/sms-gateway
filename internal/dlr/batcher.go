@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 )
 
 // ErrStopped is returned for reports submitted after the batcher stopped.
@@ -126,7 +128,9 @@ func (b *Batcher) commit(batch []pending) {
 		reports[i] = p.report
 	}
 	outcomes, err := Apply(context.Background(), b.db, reports)
-	if err != nil {
+	if err == nil {
+		metrics.DLRBatchSize.Observe(float64(len(batch)))
+	} else {
 		b.logger.Warn("delivery report batch failed", "reports", len(batch), "error", err)
 	}
 	for i, p := range batch {

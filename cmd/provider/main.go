@@ -27,6 +27,7 @@ import (
 	"github.com/mmrzaf/sms-gatway/internal/fakeprovider"
 	"github.com/mmrzaf/sms-gatway/internal/httpx"
 	"github.com/mmrzaf/sms-gatway/internal/logging"
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 )
 
 const (
@@ -94,6 +95,7 @@ func serve(ctx context.Context, stdout, stderr io.Writer, lookup config.LookupFu
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", httpx.Healthz)
+	mux.Handle("GET /metrics", metrics.Default.Handler())
 	mux.Handle("/", p.Handler())
 	handler := httpx.Chain(mux, httpx.WithRequestID(logger), httpx.WithAccessLog(), httpx.WithRecovery())
 

@@ -10,6 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/mmrzaf/sms-gatway/internal/billing"
+	"github.com/mmrzaf/sms-gatway/internal/message"
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 	"github.com/mmrzaf/sms-gatway/internal/store"
 )
 
@@ -25,6 +27,9 @@ type completer struct {
 	w    *Worker
 	in   chan outcome
 	quit chan struct{}
+	// refunded is the credits refunded by the commit in progress; it is
+	// published only once the commit succeeds.
+	refunded int64
 }
 
 func newCompleter(w *Worker) *completer {
@@ -89,11 +94,14 @@ func (c *completer) flush(batch []outcome) {
 	ctx := context.Background()
 	var err error
 	for attempt := 1; attempt <= 3; attempt++ {
+		c.refunded = 0
 		err = store.WithTx(ctx, c.w.db, func(tx pgx.Tx) error {
 			return c.commit(ctx, tx, batch)
 		})
 		if err == nil {
 			c.count(batch)
+			metrics.CompleterBatchSize.Observe(float64(len(batch)))
+			metrics.CreditsRefunded.Add(float64(c.refunded))
 			return
 		}
 		time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
@@ -102,19 +110,39 @@ func (c *completer) flush(batch []outcome) {
 		"outcomes", len(batch), "error", err)
 }
 
+// count publishes committed outcomes to the worker's counters and metrics.
 func (c *completer) count(batch []outcome) {
+	now := time.Now()
 	for _, o := range batch {
+		typ := string(o.job.Type)
+		express := o.job.Type == message.Express
+		latency := now.Sub(o.job.AcceptedAt)
 		switch o.kind {
 		case outcomeSent:
 			c.w.counters.Sent.Add(1)
+			metrics.MessagesCompleted.With(typ, "sent").Inc()
+			metrics.MessageLatency.With(typ, "sent").Observe(latency.Seconds())
+			if express && latency > c.w.cfg.ExpressSLA {
+				metrics.ExpressSLABreaches.Inc()
+			}
 		case outcomeRetry:
 			c.w.counters.Retried.Add(1)
 		case outcomeDeferred:
 			c.w.counters.Deferred.Add(1)
-		case outcomeFailed:
-			c.w.counters.Failed.Add(1)
-		case outcomeExpired:
-			c.w.counters.Expired.Add(1)
+			metrics.Deferrals.With(typ).Inc()
+		case outcomeFailed, outcomeExpired:
+			status := "failed"
+			if o.kind == outcomeExpired {
+				status = "expired"
+				c.w.counters.Expired.Add(1)
+			} else {
+				c.w.counters.Failed.Add(1)
+			}
+			metrics.MessagesCompleted.With(typ, status).Inc()
+			metrics.MessageLatency.With(typ, "completed").Observe(latency.Seconds())
+			if express {
+				metrics.ExpressSLABreaches.Inc()
+			}
 		}
 	}
 }
@@ -299,6 +327,9 @@ func (c *completer) commitTerminal(ctx context.Context, tx pgx.Tx, outcomes []ou
 	}
 	if err := billing.ApplyRefunds(ctx, tx, refunds); err != nil {
 		return err
+	}
+	for _, r := range refunds {
+		c.refunded += r.Amount
 	}
 	return c.deleteQueueRows(ctx, tx, ids)
 }

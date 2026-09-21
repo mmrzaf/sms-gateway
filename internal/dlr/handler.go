@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/mmrzaf/sms-gatway/internal/httpx"
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 )
 
 // SecretHeader carries the shared provider secret.
@@ -62,6 +63,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	report, err := h.validate(body)
 	if err != nil {
+		metrics.DLRReceived.With("invalid").Inc()
 		httpx.WriteError(w, r, err)
 		return
 	}
@@ -75,6 +77,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"The report could not be stored; retry later."))
 		return
 	}
+	metrics.DLRReceived.With(string(outcome)).Inc()
 	httpx.WriteJSON(w, http.StatusOK, reportResponse{Outcome: outcome})
 }
 

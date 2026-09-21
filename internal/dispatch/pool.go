@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 )
 
 // pool dispatches the messages of one service class with a fixed concurrency.
@@ -103,13 +105,14 @@ func (w *Worker) runPool(ctx, sendCtx context.Context, p *pool) {
 			continue
 		}
 		emptyLanes = 0
+		metrics.ClaimSize.With(p.name).Observe(float64(len(jobs)))
 
 		for _, j := range jobs {
 			p.inFlight.Add(1)
-			p.active.Add(1)
+			metrics.PoolInFlight.With(p.name).Set(float64(p.active.Add(1)))
 			go func() {
 				defer func() {
-					p.active.Add(-1)
+					metrics.PoolInFlight.With(p.name).Set(float64(p.active.Add(-1)))
 					<-p.slots
 					p.inFlight.Done()
 				}()

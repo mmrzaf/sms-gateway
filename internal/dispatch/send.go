@@ -2,9 +2,11 @@ package dispatch
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/mmrzaf/sms-gatway/internal/message"
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 )
 
 type outcomeKind int
@@ -46,24 +48,28 @@ func (w *Worker) dispatch(ctx context.Context, pol Policy, j job) (outcome, bool
 		return o, true
 	}
 	if err := p.budget.wait(ctx, pol.Class == message.Express); err != nil {
-		p.breaker.record(false, false)
+		p.record(false, false)
 		return outcome{}, false
 	}
 
+	start := time.Now()
 	ref, err := p.client.send(ctx, pol.Timeout, j.ID, j.Recipient, j.Body)
+	metrics.ProviderRequestDuration.With(p.name).Observe(time.Since(start).Seconds())
 	o.provider, o.attempted = p.name, true
 	if err == nil {
-		p.breaker.record(true, false)
+		p.record(true, false)
+		metrics.DispatchAttempts.With(p.name, string(pol.Class), "sent").Inc()
 		o.kind, o.providerRef = outcomeSent, ref
 		return o, true
 	}
 	if ctx.Err() != nil {
-		p.breaker.record(false, false)
+		p.record(false, false)
 		return outcome{}, false
 	}
 
 	se := asSendError(err)
-	p.breaker.record(false, se.ProviderFault)
+	p.record(false, se.ProviderFault)
+	metrics.DispatchAttempts.With(p.name, string(pol.Class), attemptLabel(se)).Inc()
 	o.err = "provider " + p.name + ": " + se.Error()
 	attempts := j.Attempts + 1
 
@@ -82,6 +88,25 @@ func (w *Worker) dispatch(ctx context.Context, pol Policy, j job) (outcome, bool
 		}
 	}
 	return o, true
+}
+
+// attemptLabel names a failed attempt for metrics.
+func attemptLabel(se *SendError) string {
+	switch {
+	case se.Permanent:
+		return "rejected"
+	case errors.Is(se.Err, context.DeadlineExceeded):
+		return "timeout"
+	default:
+		return "retry"
+	}
+}
+
+// record reports a request result to the provider's breaker and publishes
+// the resulting circuit state.
+func (p *provider) record(success, counted bool) {
+	p.breaker.record(success, counted)
+	metrics.CircuitState.With(p.name).Set(float64(p.breaker.State()))
 }
 
 // pick chooses the provider for an attempt. Normal traffic uses the first

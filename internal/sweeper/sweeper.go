@@ -18,6 +18,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/mmrzaf/sms-gatway/internal/message"
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
+	"github.com/mmrzaf/sms-gatway/internal/monitor"
 	"github.com/mmrzaf/sms-gatway/internal/store"
 )
 
@@ -26,6 +29,8 @@ type Config struct {
 	Interval    time.Duration
 	ExpressSLA  time.Duration
 	NormalLanes int
+	// Lanes lists every lane, for queue depth sampling.
+	Lanes []string
 	// BatchSize bounds the rows each task handles per cycle.
 	BatchSize int
 }
@@ -51,6 +56,16 @@ type Sweeper struct {
 	db     *pgxpool.Pool
 	cfg    Config
 	logger *slog.Logger
+
+	// expired collects what the expire task changed; it is published only
+	// once the task's transaction commits.
+	expired []expiredMessage
+}
+
+type expiredMessage struct {
+	typ        message.Type
+	acceptedAt time.Time
+	cost       int64
 }
 
 // New returns a sweeper.
@@ -117,13 +132,49 @@ func (s *Sweeper) Sweep(ctx context.Context) (Result, error) {
 		{taskWorkers, s.removeStaleWorkers, &res.Workers},
 	}
 	for _, step := range steps {
+		s.expired = s.expired[:0]
 		n, err := s.locked(ctx, step.task, step.run)
 		if err != nil {
 			return res, fmt.Errorf("sweeper task %s: %w", taskNames[step.task], err)
 		}
 		*step.dst = n
+		s.publishExpired()
 	}
+	s.sampleQueue(ctx)
 	return res, nil
+}
+
+func (s *Sweeper) publishExpired() {
+	now := time.Now()
+	for _, e := range s.expired {
+		metrics.MessagesCompleted.With(string(e.typ), "expired").Inc()
+		metrics.MessageLatency.With(string(e.typ), "completed").Observe(now.Sub(e.acceptedAt).Seconds())
+		metrics.CreditsRefunded.Add(float64(e.cost))
+		if e.typ == message.Express {
+			metrics.ExpressSLABreaches.Inc()
+		}
+	}
+}
+
+// sampleQueue publishes queue depth per lane. Every worker samples, so each
+// worker's metrics show the whole queue.
+func (s *Sweeper) sampleQueue(ctx context.Context) {
+	if len(s.cfg.Lanes) == 0 {
+		return
+	}
+	stats, err := monitor.QueueStats(ctx, s.db, s.cfg.Lanes)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.logger.Warn("sample queue depth", "error", err)
+		}
+		return
+	}
+	for _, l := range stats {
+		metrics.QueueDepth.With(l.Lane, "ready").Set(float64(l.Ready))
+		metrics.QueueDepth.With(l.Lane, "delayed").Set(float64(l.Delayed))
+		metrics.QueueDepth.With(l.Lane, "in_flight").Set(float64(l.InFlight))
+		metrics.QueueOldestReady.With(l.Lane).Set(l.OldestReadyAge)
+	}
 }
 
 // locked runs fn in a transaction that holds the task's advisory lock, or

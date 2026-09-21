@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mmrzaf/sms-gatway/internal/httpx"
+	"github.com/mmrzaf/sms-gatway/internal/metrics"
 )
 
 // Deterministic recipient prefixes for tests.
@@ -45,6 +46,7 @@ func (p *Provider) handleSend(w http.ResponseWriter, r *http.Request) {
 	if s.Outage {
 		p.stats.outage.Add(1)
 		rec.result = resultOutage
+		metrics.ProviderRequests.With(resultOutage).Inc()
 		p.recent.add(rec)
 		httpx.WriteJSON(w, http.StatusServiceUnavailable, sendError{"outage"})
 		return
@@ -63,12 +65,14 @@ func (p *Provider) handleSend(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(req.To, alwaysRejectPrefix), p.chance(s.RejectRate):
 		p.stats.rejected.Add(1)
 		rec.result = resultRejected
+		metrics.ProviderRequests.With(resultRejected).Inc()
 		p.recent.add(rec)
 		httpx.WriteJSON(w, http.StatusBadRequest, sendError{"invalid_recipient"})
 		return
 	case p.chance(s.FailureRate):
 		p.stats.failed.Add(1)
 		rec.result = resultFailed
+		metrics.ProviderRequests.With(resultFailed).Inc()
 		p.recent.add(rec)
 		httpx.WriteJSON(w, http.StatusInternalServerError, sendError{"internal_error"})
 		return
@@ -91,6 +95,7 @@ func (p *Provider) handleSend(w http.ResponseWriter, r *http.Request) {
 		// the deduplication store.
 		p.stats.timedOut.Add(1)
 		rec.result = resultTimedOut
+		metrics.ProviderRequests.With(resultTimedOut).Inc()
 		p.recent.add(rec)
 		if sleep(r.Context(), p.holdFor) {
 			// A caller that waited this long gets a dropped connection
@@ -100,6 +105,7 @@ func (p *Provider) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rec.result = resultAccepted
+	metrics.ProviderRequests.With(resultAccepted).Inc()
 	p.recent.add(rec)
 	httpx.WriteJSON(w, http.StatusOK, sendResponse{ProviderRef: a.ref, AcceptedAt: httpx.Time(a.acceptedAt)})
 }
@@ -107,6 +113,7 @@ func (p *Provider) handleSend(w http.ResponseWriter, r *http.Request) {
 // replay answers a repeated send with the original result.
 func (p *Provider) replay(w http.ResponseWriter, a acceptance) {
 	p.stats.duplicates.Add(1)
+	metrics.ProviderRequests.With("duplicate").Inc()
 	p.recent.update(a.record, func(r *record) { r.duplicates++ })
 	httpx.WriteJSON(w, http.StatusOK, sendResponse{ProviderRef: a.ref, AcceptedAt: httpx.Time(a.acceptedAt)})
 }

@@ -104,6 +104,10 @@ type Worker struct {
 	random    func() float64
 
 	counters Counters
+
+	snapMu   sync.Mutex
+	lastSnap time.Time
+	lastCnt  map[string]int64
 }
 
 // Counters are a worker's cumulative outcome counts.
@@ -205,16 +209,31 @@ func (w *Worker) Snapshot() map[string]any {
 	pool := func(p *pool) map[string]any {
 		return map[string]any{"concurrency": p.concurrency, "in_flight": p.active.Load()}
 	}
+	counters := map[string]int64{
+		"sent":     w.counters.Sent.Load(),
+		"retried":  w.counters.Retried.Load(),
+		"deferred": w.counters.Deferred.Load(),
+		"failed":   w.counters.Failed.Load(),
+		"expired":  w.counters.Expired.Load(),
+	}
+
+	// Rates are the counter increase since the previous snapshot.
+	w.snapMu.Lock()
+	now := time.Now()
+	rates := make(map[string]float64, len(counters))
+	if elapsed := now.Sub(w.lastSnap).Seconds(); w.lastCnt != nil && elapsed > 0 {
+		for k, v := range counters {
+			rates[k] = float64(v-w.lastCnt[k]) / elapsed
+		}
+	}
+	w.lastSnap, w.lastCnt = now, counters
+	w.snapMu.Unlock()
+
 	return map[string]any{
-		"pools": map[string]any{"express": pool(w.express), "normal": pool(w.normal)},
-		"counters": map[string]int64{
-			"sent":     w.counters.Sent.Load(),
-			"retried":  w.counters.Retried.Load(),
-			"deferred": w.counters.Deferred.Load(),
-			"failed":   w.counters.Failed.Load(),
-			"expired":  w.counters.Expired.Load(),
-		},
-		"circuits": circuits,
+		"pools":       map[string]any{"express": pool(w.express), "normal": pool(w.normal)},
+		"counters":    counters,
+		"rates_per_s": rates,
+		"circuits":    circuits,
 	}
 }
 
