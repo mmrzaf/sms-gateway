@@ -9,6 +9,10 @@ import (
 	"github.com/mmrzaf/sms-gatway/internal/metrics"
 )
 
+// claimErrorBackoff is the pause after a failed claim, so an unavailable
+// database is not queried at poll speed.
+const claimErrorBackoff = time.Second
+
 // pool dispatches the messages of one service class with a fixed concurrency.
 type pool struct {
 	name        string
@@ -91,7 +95,7 @@ func (w *Worker) runPool(ctx, sendCtx context.Context, p *pool) {
 		if err != nil {
 			if ctx.Err() == nil {
 				w.logger.Error("claim failed", "pool", p.name, "lane", lane, "error", err)
-				sleep(ctx, w.cfg.PollInterval)
+				sleep(ctx, max(w.cfg.PollInterval, claimErrorBackoff))
 			}
 			continue
 		}

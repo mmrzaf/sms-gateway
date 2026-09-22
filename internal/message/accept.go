@@ -144,6 +144,10 @@ func (s *Service) insert(ctx context.Context, customerID uuid.UUID, items []item
 			return fmt.Errorf("insert messages: %w", err)
 		}
 		inserted, err = pgx.CollectRows(rows, scan)
+		if store.IsForeignKeyViolation(err, "") {
+			// The customer was deleted after the request was authenticated.
+			return billing.ErrCustomerNotFound
+		}
 		if err != nil {
 			return fmt.Errorf("insert messages: %w", err)
 		}

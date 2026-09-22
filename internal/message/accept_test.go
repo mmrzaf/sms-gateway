@@ -365,3 +365,16 @@ func TestSummarize(t *testing.T) {
 		t.Errorf("by type: %v", sum.ByType)
 	}
 }
+
+func TestAcceptForDeletedCustomer(t *testing.T) {
+	pool := testutil.DB(t)
+	svc := newService(pool)
+	c, _ := testutil.Customer(t, pool, 10)
+	if _, err := pool.Exec(context.Background(), `DELETE FROM customers WHERE id = $1`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := svc.Accept(context.Background(), c.ID, message.Request{To: "+989121234567", Text: "hi"})
+	if !errors.Is(err, billing.ErrCustomerNotFound) {
+		t.Fatalf("got %v", err)
+	}
+}
