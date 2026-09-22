@@ -41,7 +41,7 @@ flowchart LR
 | `provider-a` | `provider` with `PROVIDER_NAME=A` | — | `provider probe http://localhost:9001/healthz` |
 | `provider-b` | `provider` with `PROVIDER_NAME=B`, `PROVIDER_ADDR=:9002` | — | `provider probe http://localhost:9002/healthz` |
 
-Ports 8080 and 8081 are published to the host, and 9001, 9002, and 5432 are published for local inspection of the providers and the database. In any shared environment only 8080 is exposed. Configuration comes from `deploy/.env`; `deploy/.env.example` documents every variable with its local default.
+Only the public port 8080 listens on all host interfaces. The admin port 8081, the providers (9001, 9002), and PostgreSQL (5432) are published on `127.0.0.1` only, for local use of the dashboard and inspection of the providers and the database. Configuration comes from `deploy/.env`; `deploy/.env.example` documents every variable with its local default.
 
 `deploy/docker-compose.bench.yml` is an override used by `make bench`: it runs two worker instances, raises PostgreSQL memory settings, and sets the providers' latency and failure rates to zero.
 
@@ -82,6 +82,7 @@ The worker's `LISTEN` connection needs a session and connects to PostgreSQL dire
 ## Security notes
 
 - The admin port (8081) is bound to the private network in any shared environment. It carries the dashboard, the admin API, and the DLR endpoint.
+- The dashboard and admin API reject cross-origin state-changing requests (Go's `http.CrossOriginProtection`), because browsers resend basic-auth credentials automatically.
 - `ADMIN_TOKEN` and `PROVIDER_SECRET` are supplied as secrets, never committed. `deploy/.env.example` holds placeholder values for local use only.
 - API keys are never logged. Message bodies and recipients are logged only at `debug` level.
 

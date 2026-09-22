@@ -49,6 +49,7 @@ type Server struct {
 	logger   *slog.Logger
 	client   *http.Client
 	pages    map[string]*template.Template
+	csrf     *http.CrossOriginProtection
 	now      func() time.Time
 }
 
@@ -65,6 +66,7 @@ func New(db *pgxpool.Pool, messages *message.Service, cfg Config, logger *slog.L
 		logger:   logger,
 		client:   &http.Client{Timeout: 5 * time.Second},
 		pages:    pages,
+		csrf:     http.NewCrossOriginProtection(),
 		now:      time.Now,
 	}, nil
 }
@@ -96,10 +98,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.Handle("GET /dashboard/static/", s.basicAuth(http.StripPrefix("/dashboard/static/", http.FileServerFS(static))))
 }
 
-// basicAuth requires user "admin" with the admin token as password.
+// basicAuth requires user "admin" with the admin token as password, and
+// rejects cross-origin requests that change state. Browsers resend basic-auth
+// credentials automatically, so without the origin check a page on another
+// site could submit dashboard forms on the operator's behalf.
 func (s *Server) basicAuth(next http.Handler) http.Handler {
 	token := []byte(s.cfg.Token)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return s.csrf.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, pass, ok := r.BasicAuth()
 		if !ok || user != User || subtle.ConstantTimeCompare([]byte(pass), token) != 1 {
 			w.Header().Set("WWW-Authenticate", `Basic realm="sms-gateway-admin"`)
@@ -108,7 +113,7 @@ func (s *Server) basicAuth(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
-	})
+	}))
 }
 
 // handlerFunc returns its error so error responses are produced in one place.

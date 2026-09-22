@@ -282,3 +282,25 @@ func TestDashboardForms(t *testing.T) {
 		t.Errorf("customers left: %d", balance)
 	}
 }
+
+func TestCrossOriginFormIsRejected(t *testing.T) {
+	e := newEnv(t)
+	req, _ := http.NewRequest("POST", e.srv.URL+"/dashboard/customers", strings.NewReader("name=evil"))
+	req.SetBasicAuth(admin.User, token)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "https://attacker.example")
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("cross-origin form: %d", resp.StatusCode)
+	}
+	var n int
+	_ = e.pool.QueryRow(context.Background(), `SELECT count(*) FROM customers WHERE name = 'evil'`).Scan(&n)
+	if n != 0 {
+		t.Error("a cross-origin form created a customer")
+	}
+}

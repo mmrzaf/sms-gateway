@@ -4,7 +4,7 @@ The JSON API behind the dashboard, for managing demo customers and inspecting th
 
 ## Authentication
 
-HTTP basic authentication with user `admin` and password `ADMIN_TOKEN`. The same credentials protect the dashboard pages. Requests without valid credentials receive `401` with `WWW-Authenticate: Basic realm="sms-gateway-admin"`.
+HTTP basic authentication with user `admin` and password `ADMIN_TOKEN`. The same credentials protect the dashboard pages. Requests without valid credentials receive `401` with `WWW-Authenticate: Basic realm="sms-gateway-admin"`. State-changing requests sent cross-origin by a browser (detected with `Sec-Fetch-Site` and `Origin`) are rejected with `403`; non-browser clients such as scripts are unaffected.
 
 Errors use the envelope described in [API conventions](010-conventions.md#errors).
 

@@ -38,7 +38,8 @@ func (s *Server) proxyProvider(path string) handlerFunc {
 		if r.URL.RawQuery != "" {
 			url += "?" + r.URL.RawQuery
 		}
-		req, err := http.NewRequestWithContext(r.Context(), r.Method, url, r.Body)
+		body := http.MaxBytesReader(w, r.Body, httpx.MaxBodyBytes)
+		req, err := http.NewRequestWithContext(r.Context(), r.Method, url, body)
 		if err != nil {
 			return err
 		}
