@@ -53,7 +53,7 @@ Providers are listed in `PROVIDERS` in priority order, for example `A` then `B`.
 
 Normal messages do not rotate providers on a timeout. They retry the same provider, whose deduplication turns the retry into a safe status check. Express rotates on every retry to avoid waiting on a struggling provider, and accepts the rare duplicate that results when the first provider had in fact accepted the message.
 
-If no provider is usable, the message is **deferred**: returned to the queue with `next_attempt_at = now + CIRCUIT_OPEN_DURATION` and without counting an attempt. A provider outage therefore consumes time, not attempts. Messages that exceed their TTL while deferred are expired and refunded by the sweeper.
+If no provider is usable, the message is **deferred**: returned to the queue without counting an attempt, with `next_attempt_at = now + CIRCUIT_OPEN_DURATION`. A provider outage therefore consumes time, not attempts. A job whose lease already expired when its turn to send arrives is likewise deferred, but released immediately for reclaim with a fresh lease. Messages that exceed their TTL while deferred are expired and refunded by the sweeper.
 
 ## Circuit breaker
 

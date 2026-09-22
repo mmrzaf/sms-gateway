@@ -73,7 +73,9 @@ flowchart TD
     exp -- no --> sel{usable provider?}
     sel -- no --> deferred([outcome: deferred])
     sel -- yes --> budget[wait for rate budget token]
-    budget --> send[POST /send with class timeout]
+    budget --> lease{lease still held?}
+    lease -- no --> deferred
+    lease -- yes --> send[POST /send with class timeout]
     send --> res{result}
     res -- 200 --> sent([outcome: sent])
     res -- permanent 4xx --> failed([outcome: failed, rejected])
@@ -98,17 +100,22 @@ Outcomes in a batch are sorted by message ID before they are applied, and the DL
 UPDATE messages m
 SET status = CASE WHEN m.status = 'accepted' THEN 'sent' ELSE m.status END,
     sent_at = COALESCE(m.sent_at, now()),
-    provider = r.provider,
-    provider_ref = r.provider_ref,
-    attempts = m.attempts + 1,
+    provider = CASE WHEN m.status = 'accepted' THEN r.provider ELSE m.provider END,
+    provider_ref = CASE WHEN m.status = 'accepted' THEN r.provider_ref ELSE m.provider_ref END,
+    attempts = m.attempts + CASE WHEN m.attempts = r.snap THEN 1 ELSE 0 END,
     sla_breached = m.sla_breached
                    OR (m.type = 'express' AND now() - m.accepted_at > $express_sla),
     updated_at = now()
-FROM unnest($ids::uuid[], $providers::text[], $refs::text[]) AS r(id, provider, provider_ref)
+FROM unnest($ids::uuid[], $providers::text[], $refs::text[], $snaps::int[]) AS r(id, provider, provider_ref, snap)
 WHERE m.id = r.id AND m.status NOT IN ('failed', 'expired');
 
 DELETE FROM queue WHERE message_id = ANY($ids) AND lease_owner = $worker_id;
 ```
+
+The attempt counts only when the row still holds the claim-time attempt
+count (`r.snap`), so a retried commit never counts twice. Provider details
+follow the accepted-to-sent transition; a status already finalized by an
+early DLR keeps the DLR's record.
 
 A status already set to `delivered` or `undelivered` by an early DLR is preserved.
 
@@ -116,8 +123,9 @@ A status already set to `delivered` or `undelivered` by an early DLR is preserve
 
 ```sql
 UPDATE messages m
-SET attempts = m.attempts + 1, provider = r.provider, last_error = r.error, updated_at = now()
-FROM unnest($ids::uuid[], $providers::text[], $errors::text[]) AS r(id, provider, error)
+SET attempts = m.attempts + CASE WHEN m.attempts = r.snap THEN 1 ELSE 0 END,
+    provider = r.provider, last_error = r.error, updated_at = now()
+FROM unnest($ids::uuid[], $providers::text[], $errors::text[], $snaps::int[]) AS r(id, provider, error, snap)
 WHERE m.id = r.id AND m.status = 'accepted'
 RETURNING m.id;
 
@@ -129,7 +137,7 @@ WHERE q.message_id = r.id AND q.lease_owner = $worker_id;
 
 Queue rows of messages that did not match (already terminal through a DLR) are deleted instead.
 
-**deferred**: only the queue row changes: `lease_owner = NULL`, `next_attempt_at = now() + CIRCUIT_OPEN_DURATION`. `attempts` is unchanged.
+**deferred**: only the queue row changes: `lease_owner = NULL`, `next_attempt_at = now() + delay`, where the delay is per outcome — `CIRCUIT_OPEN_DURATION` when no provider was usable, immediate when the job's lease had already expired. `attempts` is unchanged.
 
 **failed** and **expired**: the status compare-and-set from `accepted`, the refund for exactly the returned rows, and the queue row deletion, as shown in [Credits and billing](../030-domain/020-credits-and-billing.md#refunds). Balance updates are applied one per customer in ascending `customer_id` order, so concurrent completers and the sweeper cannot deadlock.
 

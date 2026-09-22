@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/mmrzaf/sms-gatway/internal/message"
 )
 
@@ -110,6 +112,44 @@ func TestPick(t *testing.T) {
 	w.providers[1].breaker.record(false, true) // open B
 	if p := w.pick(normal, 0); p != nil || w.anyUsable() {
 		t.Error("no provider should be usable")
+	}
+}
+
+func TestDispatchSkipsStaleLease(t *testing.T) {
+	newWorker := func(lease time.Duration) *Worker {
+		w := &Worker{
+			cfg:    Config{LeaseDuration: lease, CircuitOpenDuration: time.Second},
+			random: func() float64 { return 0 },
+		}
+		w.providers = append(w.providers, &provider{
+			name:    "A",
+			client:  newClient("A", "http://127.0.0.1:1", 1),
+			breaker: newBreaker(1, time.Hour),
+			budget:  newBudget(1000, 0),
+		})
+		return w
+	}
+	now := time.Now()
+	newJob := func() job {
+		return job{
+			ID: uuid.New(), Type: message.Normal,
+			Recipient: "+989121234567", Body: "stale lease",
+			ExpiresAt: now.Add(time.Hour), DBNow: now, claimedAt: now,
+		}
+	}
+	pol := Policy{
+		Class: message.Normal, MaxAttempts: 3,
+		BackoffBase: time.Second, BackoffMax: time.Second, Timeout: time.Second,
+	}
+
+	o, ok := newWorker(0).dispatch(context.Background(), pol, newJob())
+	if !ok || o.kind != outcomeDeferred || o.delay != 0 {
+		t.Fatalf("expired lease: kind=%v delay=%v ok=%v, want immediate deferral", o.kind, o.delay, ok)
+	}
+
+	o, ok = newWorker(time.Hour).dispatch(context.Background(), pol, newJob())
+	if !ok || o.kind == outcomeDeferred || o.kind == outcomeExpired {
+		t.Fatalf("fresh lease: kind=%v ok=%v, want a send attempt", o.kind, ok)
 	}
 }
 

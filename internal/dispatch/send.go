@@ -51,6 +51,10 @@ func (w *Worker) dispatch(ctx context.Context, pol Policy, j job) (outcome, bool
 		p.record(false, false)
 		return outcome{}, false
 	}
+	if !j.dbNow().Before(j.DBNow.Add(w.cfg.LeaseDuration)) {
+		o.kind = outcomeDeferred
+		return o, true
+	}
 
 	start := time.Now()
 	ref, err := p.client.send(ctx, pol.Timeout, j.ID, j.Recipient, j.Body)
