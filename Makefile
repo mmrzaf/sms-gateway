@@ -61,6 +61,15 @@ check: ## Run the invariant checker against the stack
 run: migrate ## Run the gateway on the host in the "all" role
 	$(LOCAL_ENV) go run ./cmd/gateway serve --role=all
 
+.PHONY: local
+local: ## Run the whole system on the host against a local PostgreSQL, no Docker (migrates, starts fake providers A and B, then the gateway)
+	@trap 'kill %1 %2 2>/dev/null' EXIT; \
+	PROVIDER_SECRET=local-provider-secret PROVIDER_NAME=A PROVIDER_ADDR=:9001 GATEWAY_DLR_URL=http://localhost:8081/internal/dlr go run ./cmd/provider & \
+	PROVIDER_SECRET=local-provider-secret PROVIDER_NAME=B PROVIDER_ADDR=:9002 GATEWAY_DLR_URL=http://localhost:8081/internal/dlr go run ./cmd/provider & \
+	sleep 1; \
+	$(LOCAL_ENV) go run ./cmd/gateway migrate; \
+	$(LOCAL_ENV) go run ./cmd/gateway serve --role=all
+
 .PHONY: build
 build: ## Build binaries into bin/
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/ ./cmd/...
