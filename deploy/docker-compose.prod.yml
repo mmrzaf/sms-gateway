@@ -59,18 +59,33 @@ services:
       - traefik.enable=true
       - traefik.docker.network=proxy
 
-      - traefik.http.routers.sms-gateway-api.rule=Host(`${APP_DOMAIN:?APP_DOMAIN missing}`)
-      - traefik.http.routers.sms-gateway-api.entrypoints=websecure
-      - traefik.http.routers.sms-gateway-api.tls=true
-      - traefik.http.routers.sms-gateway-api.middlewares=security-headers@file,rate-limit@file
-      - traefik.http.services.sms-gateway-api.loadbalancer.server.port=8080
+      # Apex -> dashboard.
+      - traefik.http.middlewares.sms-root-redirect.redirectregex.regex=.*
+      - traefik.http.middlewares.sms-root-redirect.redirectregex.replacement=/dashboard/
+      - traefik.http.routers.sms-root.rule=Host(`${APP_DOMAIN:?APP_DOMAIN missing}`) && Path(`/`)
+      - traefik.http.routers.sms-root.entrypoints=websecure
+      - traefik.http.routers.sms-root.tls=true
+      - traefik.http.routers.sms-root.priority=200
+      - traefik.http.routers.sms-root.middlewares=sms-root-redirect
+      - traefik.http.routers.sms-root.service=sms-gateway-api
 
+      # Operator UI + admin API -> :8081.
       - traefik.http.routers.sms-gateway-admin.rule=Host(`${APP_DOMAIN:?APP_DOMAIN missing}`) && (PathPrefix(`/admin`) || PathPrefix(`/dashboard`))
       - traefik.http.routers.sms-gateway-admin.entrypoints=websecure
       - traefik.http.routers.sms-gateway-admin.tls=true
       - traefik.http.routers.sms-gateway-admin.priority=100
       - traefik.http.routers.sms-gateway-admin.middlewares=security-headers@file
+      - traefik.http.routers.sms-gateway-admin.service=sms-gateway-admin
       - traefik.http.services.sms-gateway-admin.loadbalancer.server.port=8081
+
+      # Customer API + everything else -> :8080.
+      - traefik.http.routers.sms-gateway-api.rule=Host(`${APP_DOMAIN:?APP_DOMAIN missing}`)
+      - traefik.http.routers.sms-gateway-api.entrypoints=websecure
+      - traefik.http.routers.sms-gateway-api.tls=true
+      - traefik.http.routers.sms-gateway-api.priority=10
+      - traefik.http.routers.sms-gateway-api.middlewares=security-headers@file,rate-limit@file
+      - traefik.http.routers.sms-gateway-api.service=sms-gateway-api
+      - traefik.http.services.sms-gateway-api.loadbalancer.server.port=8080
     security_opt:
       - no-new-privileges:true
     cap_drop:

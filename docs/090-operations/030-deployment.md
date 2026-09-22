@@ -45,6 +45,44 @@ Only the public port 8080 listens on all host interfaces. The admin port 8081, t
 
 `deploy/docker-compose.bench.yml` is an override used by `make bench`: it runs two worker instances, raises PostgreSQL memory settings, and sets the providers' latency and failure rates to zero.
 
+## Production edge contract
+
+`deploy/docker-compose.prod.yml` puts one Traefik in front of the single
+`gateway-api` container, which serves both listeners. Three routers,
+ordered by priority:
+
+| Request | Goes to |
+|---|---|
+| `GET /` | Redirect to `/dashboard/` (Traefik middleware, relative target, no backend hit) |
+| `PathPrefix(/admin)`, `PathPrefix(/dashboard)` | `:8081` admin server (dashboard + admin API, basic auth in app) |
+| everything else on the domain | `:8080` public server (customer API, docs, health) |
+
+The edge routes by host; the app owns paths and error envelopes, so
+unknown paths get the app's JSON `not_found`, not Traefik's 404.
+`/metrics` and `/internal/dlr` also listen on `:8081` but no router sends
+them traffic, so they stay private. `/healthz` and `/readyz` stay
+reachable for load balancers and monitors; only the compose healthchecks
+use them today.
+
+Layer ownership:
+
+- Edge (Traefik file provider + ArvanCloud): TLS, security headers, per-IP
+  edge rate limit (`rate-limit@file` on the API router only). The app sets
+  none of these; `internal/httpx` owns only `X-Request-Id`, access logs,
+  recovery, and request metrics.
+- App: bearer/basic auth, per-customer rate limits, and every error
+  envelope. Note an edge `429` is Traefik's plain response, not the
+  `rate_limited` JSON envelope — clients must accept both shapes.
+
+Host prerequisites (all outside this repo): external `proxy` and `data`
+networks; file-provider middlewares `security-headers@file` and
+`rate-limit@file`; Arvan bypass-cache (never cache `/v1/*`, `/admin/*`,
+`/dashboard/*`) and no WAF block on `/admin`. Server `.env` must define
+`APP_IMAGE`, `APP_DOMAIN`, `ADMIN_TOKEN`, `PROVIDER_SECRET`,
+`DATABASE_URL`, and `PROVIDERS`. One API replica means `API_INSTANCES`
+must stay `1`; the scaled topology changes that, see
+[Scaling path](../080-scalability/030-scaling-path.md).
+
 ## Startup and shutdown order
 
 1. PostgreSQL becomes healthy.
