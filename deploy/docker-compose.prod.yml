@@ -1,0 +1,147 @@
+x-provider: &provider
+  image: ${APP_IMAGE:?APP_IMAGE missing}
+  command: ["provider", "serve"]
+  restart: unless-stopped
+  networks:
+    - smsgateway_internal
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
+  tmpfs:
+    - /tmp:size=32m,noexec,nosuid,nodev
+  pids_limit: 128
+  stop_grace_period: 10s
+
+x-provider-env: &provider-env
+  GATEWAY_DLR_URL: http://gateway-api:8081/internal/dlr
+  PROVIDER_SECRET: ${PROVIDER_SECRET:?PROVIDER_SECRET missing}
+  LOG_LEVEL: info
+
+services:
+  migrate:
+    image: ${APP_IMAGE:?APP_IMAGE missing}
+    container_name: sms-gateway-migrate
+    command: ["gateway", "migrate"]
+    restart: "no"
+    env_file:
+      - .env
+    networks:
+      - data
+    security_opt:
+      - no-new-privileges:true
+
+  gateway-api:
+    image: ${APP_IMAGE:?APP_IMAGE missing}
+    container_name: sms-gateway-api
+    command: ["gateway", "serve", "--role=api"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    networks:
+      - proxy
+      - data
+      - smsgateway_internal
+    expose:
+      - "8080"
+      - "8081"
+    healthcheck:
+      test: ["CMD", "gateway", "probe", "http://localhost:8080/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+
+      - traefik.http.routers.sms-gateway-api.rule=Host(`${APP_DOMAIN:?APP_DOMAIN missing}`)
+      - traefik.http.routers.sms-gateway-api.entrypoints=websecure
+      - traefik.http.routers.sms-gateway-api.tls=true
+      - traefik.http.routers.sms-gateway-api.middlewares=security-headers@file,rate-limit@file
+      - traefik.http.services.sms-gateway-api.loadbalancer.server.port=8080
+
+      - traefik.http.routers.sms-gateway-admin.rule=Host(`${APP_DOMAIN:?APP_DOMAIN missing}`) && (PathPrefix(`/admin`) || PathPrefix(`/dashboard`))
+      - traefik.http.routers.sms-gateway-admin.entrypoints=websecure
+      - traefik.http.routers.sms-gateway-admin.tls=true
+      - traefik.http.routers.sms-gateway-admin.priority=100
+      - traefik.http.routers.sms-gateway-admin.middlewares=security-headers@file
+      - traefik.http.services.sms-gateway-admin.loadbalancer.server.port=8081
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    pids_limit: 256
+    stop_grace_period: 30s
+
+  gateway-worker:
+    image: ${APP_IMAGE:?APP_IMAGE missing}
+    container_name: sms-gateway-worker
+    command: ["gateway", "serve", "--role=worker"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    networks:
+      - data
+      - smsgateway_internal
+    healthcheck:
+      test: ["CMD", "gateway", "probe", "http://localhost:8082/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    pids_limit: 256
+    stop_grace_period: 30s
+
+  provider-a:
+    <<: *provider
+    container_name: sms-gateway-provider-a
+    environment:
+      <<: *provider-env
+      PROVIDER_NAME: A
+      PROVIDER_ADDR: :9001
+    healthcheck:
+      test: ["CMD", "provider", "probe", "http://localhost:9001/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  provider-b:
+    <<: *provider
+    container_name: sms-gateway-provider-b
+    environment:
+      <<: *provider-env
+      PROVIDER_NAME: B
+      PROVIDER_ADDR: :9002
+    healthcheck:
+      test: ["CMD", "provider", "probe", "http://localhost:9002/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+networks:
+  proxy:
+    external: true
+  data:
+    external: true
+  smsgateway_internal:
+    name: smsgateway_internal
