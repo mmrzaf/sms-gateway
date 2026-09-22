@@ -335,7 +335,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         kind: { type: string, enum: [charge, debit, refund] }
-        amount: { type: integer, format: int64, description: Positive for charges and refunds, negative for debits. }
+        amount: { type: integer, format: int64, description: "Positive for charges and refunds, negative for debits." }
         message_id: { type: [string, "null"], format: uuid }
         client_ref: { type: [string, "null"] }
         created_at: { $ref: "#/components/schemas/Timestamp" }
