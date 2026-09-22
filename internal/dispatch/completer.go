@@ -187,24 +187,28 @@ func (c *completer) commit(ctx context.Context, tx pgx.Tx, batch []outcome) erro
 
 // commitSent records provider acceptance. A status already made terminal by
 // an early delivery report is kept, but the provider details are recorded.
+// The attempt is counted only on the accepted-to-sent transition, so a
+// retried commit never counts twice.
 func (c *completer) commitSent(ctx context.Context, tx pgx.Tx, outcomes []outcome) error {
 	ids, providers, refs := make([]uuid.UUID, len(outcomes)), make([]string, len(outcomes)), make([]string, len(outcomes))
+	snaps := make([]int32, len(outcomes))
 	for i, o := range outcomes {
 		ids[i], providers[i], refs[i] = o.job.ID, o.provider, o.providerRef
+		snaps[i] = int32(o.job.Attempts)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE messages m
 		SET status = CASE WHEN m.status = 'accepted' THEN 'sent' ELSE m.status END,
 		    sent_at = COALESCE(m.sent_at, now()),
-		    provider = r.provider,
-		    provider_ref = r.provider_ref,
-		    attempts = m.attempts + 1,
+		    provider = CASE WHEN m.status = 'accepted' THEN r.provider ELSE m.provider END,
+		    provider_ref = CASE WHEN m.status = 'accepted' THEN r.provider_ref ELSE m.provider_ref END,
+		    attempts = m.attempts + CASE WHEN m.attempts = r.snap THEN 1 ELSE 0 END,
 		    sla_breached = m.sla_breached
-		                   OR (m.type = 'express' AND now() - m.accepted_at > $4 * interval '1 millisecond'),
+		                   OR (m.type = 'express' AND now() - m.accepted_at > $5 * interval '1 millisecond'),
 		    updated_at = now()
-		FROM unnest($1::uuid[], $2::text[], $3::text[]) AS r(id, provider, provider_ref)
+		FROM unnest($1::uuid[], $2::text[], $3::text[], $4::int[]) AS r(id, provider, provider_ref, snap)
 		WHERE m.id = r.id AND m.status NOT IN ('failed', 'expired')`,
-		ids, providers, refs, c.w.cfg.ExpressSLA.Milliseconds()); err != nil {
+		ids, providers, refs, snaps, c.w.cfg.ExpressSLA.Milliseconds()); err != nil {
 		return fmt.Errorf("record sent messages: %w", err)
 	}
 	return c.deleteQueueRows(ctx, tx, ids)
@@ -215,18 +219,21 @@ func (c *completer) commitSent(ctx context.Context, tx pgx.Tx, outcomes []outcom
 func (c *completer) commitRetry(ctx context.Context, tx pgx.Tx, outcomes []outcome) error {
 	n := len(outcomes)
 	ids, providers, errs := make([]uuid.UUID, n), make([]string, n), make([]string, n)
+	snaps := make([]int32, n)
 	delays := make(map[uuid.UUID]int64, n)
 	for i, o := range outcomes {
 		ids[i], providers[i], errs[i] = o.job.ID, o.provider, o.err
+		snaps[i] = int32(o.job.Attempts)
 		delays[o.job.ID] = o.delay.Milliseconds()
 	}
 	rows, err := tx.Query(ctx, `
 		UPDATE messages m
-		SET attempts = m.attempts + 1, provider = r.provider, last_error = r.error, updated_at = now()
-		FROM unnest($1::uuid[], $2::text[], $3::text[]) AS r(id, provider, error)
+		SET attempts = m.attempts + CASE WHEN m.attempts = r.snap THEN 1 ELSE 0 END,
+		    provider = r.provider, last_error = r.error, updated_at = now()
+		FROM unnest($1::uuid[], $2::text[], $3::text[], $4::int[]) AS r(id, provider, error, snap)
 		WHERE m.id = r.id AND m.status = 'accepted'
 		RETURNING m.id`,
-		ids, providers, errs)
+		ids, providers, errs, snaps)
 	if err != nil {
 		return fmt.Errorf("record failed attempts: %w", err)
 	}
@@ -260,17 +267,22 @@ func (c *completer) commitRetry(ctx context.Context, tx pgx.Tx, outcomes []outco
 }
 
 // commitDeferred returns messages to the queue without counting an attempt,
-// because no provider was usable.
+// because no provider was usable. Each outcome carries its own delay: circuit
+// deferrals wait out the outage, lease deferrals release immediately.
 func (c *completer) commitDeferred(ctx context.Context, tx pgx.Tx, outcomes []outcome) error {
-	ids := make([]uuid.UUID, len(outcomes))
+	n := len(outcomes)
+	ids := make([]uuid.UUID, n)
+	delays := make([]int64, n)
 	for i, o := range outcomes {
 		ids[i] = o.job.ID
+		delays[i] = o.delay.Milliseconds()
 	}
 	if _, err := tx.Exec(ctx, `
-		UPDATE queue
-		SET lease_owner = NULL, next_attempt_at = now() + $2 * interval '1 millisecond'
-		WHERE message_id = ANY($1::uuid[]) AND lease_owner = $3`,
-		ids, c.w.cfg.CircuitOpenDuration.Milliseconds(), c.w.id); err != nil {
+		UPDATE queue q
+		SET lease_owner = NULL, next_attempt_at = now() + r.delay_ms * interval '1 millisecond'
+		FROM unnest($1::uuid[], $2::bigint[]) AS r(id, delay_ms)
+		WHERE q.message_id = r.id AND lease_owner = $3`,
+		ids, delays, c.w.id); err != nil {
 		return fmt.Errorf("defer messages: %w", err)
 	}
 	return nil
