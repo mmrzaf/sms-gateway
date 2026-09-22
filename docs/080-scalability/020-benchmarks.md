@@ -43,16 +43,16 @@ The Measured column is filled from the output of `make bench` on the reference m
 
 | ID | Metric | Measured | At target |
 |---|---|---|---|
-| B1 | Accepts/s (single) | 1,075.0/s (median) | 10,000 across API instances |
-| B1 | Accept latency p50 / p99 at 50% of max | 97.87 ms / 339.55 ms | p99 < 100 ms |
-| B2 | Accepts/s for one customer | 155.1/s (median) | Informs per-customer limits |
-| B3 | Accepts/s (batch 100 / 500) | 22,671.5/s / 25,965.8/s (medians) | 10,000 |
-| B4 | Dispatched/s per worker | 3,286 msgs/s (median; topology running concurrently) | 10,000 across workers |
+| B1 | Accepts/s (single) | 2,284.2/s (median) | 10,000 across API instances |
+| B1 | Accept latency p50 / p99 | 60.96 ms / 143.08 ms (medians) | p99 < 100 ms |
+| B2 | Accepts/s for one customer | 184.2/s (median) | Informs per-customer limits |
+| B3 | Accepts/s (batch 100 / 500) | 21,561.9/s / 24,612.2/s (medians) | 10,000 |
+| B4 | Dispatched/s per worker | 10,517 msgs/s (median; topology idle but running) | 10,000 across workers |
 | B5 | Sustained end-to-end messages/s | 500/s (FAIL at 1,000) | 10,000 |
-| B6 | Express accept→sent p99 | 6.501 s (FAIL; target < 2 s) | < 2 s |
-| B7 | DLRs/s | 1,470.2/s (median) | 10,000 |
-| — | PostgreSQL commits/s at max (B1) | 1,586 commits/s | ≈ 10,000 |
-| — | WAL MB/s at max (B5) | 1.21 MB/s at 500/s offered | 30–50 |
+| B6 | Express accept→sent p99 | 10.681 s (FAIL; target < 2 s) | < 2 s |
+| B7 | DLRs/s | 1,481.9/s (median) | 10,000 |
+| — | PostgreSQL commits/s at B1 median | 3,396.83 commits/s | ≈ 10,000 |
+| — | WAL MB/s at B5 passing rate | 1.317 MB/s at 500/s offered | 30–50 |
 
 ## Related
 
