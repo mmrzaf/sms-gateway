@@ -523,8 +523,15 @@ func TestEndToEndDeliveryReport(t *testing.T) {
 	undelivered := accept(t, svc, c.ID, message.Express, "+998121234567")
 	startWorker(t, pool, testConfig(provider.URL))
 
-	got := waitForStatus(t, svc, delivered, message.StatusDelivered)
-	if got.SentAt == nil || got.CompletedAt == nil || got.ProviderRef == nil {
+	waitForStatus(t, svc, delivered, message.StatusDelivered)
+	// The report may overtake the worker's record of the acceptance; the
+	// provider details and sent time follow when the completer commits.
+	var got message.Message
+	waitFor(t, "the acceptance to be recorded", func() bool {
+		got = reload(t, svc, delivered)
+		return got.SentAt != nil
+	})
+	if got.Status != message.StatusDelivered || got.CompletedAt == nil || got.ProviderRef == nil || got.Attempts != 1 {
 		t.Errorf("delivered message: %+v", got)
 	}
 	waitForStatus(t, svc, undelivered, message.StatusUndelivered)

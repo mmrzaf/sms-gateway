@@ -117,8 +117,14 @@ func TestAllRolesEndToEnd(t *testing.T) {
 		adminAddr:  `sms_messages_accepted_total{type="normal"}`,
 		workerAddr: `sms_messages_completed_total{type="normal",status="sent"}`,
 	} {
-		if body := get(t, "http://"+addr+"/metrics", ""); !strings.Contains(body, want) {
-			t.Errorf("metrics on %s lack %s", addr, want)
+		// The worker's completion can commit just after the delivery report.
+		deadline := time.Now().Add(5 * time.Second)
+		for !strings.Contains(get(t, "http://"+addr+"/metrics", ""), want) {
+			if time.Now().After(deadline) {
+				t.Errorf("metrics on %s lack %s", addr, want)
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
 		}
 	}
 	if body := get(t, "http://"+adminAddr+"/dashboard/customers/"+c.ID.String(), "admin-token"); !strings.Contains(body, "acme") {
