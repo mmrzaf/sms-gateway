@@ -13,7 +13,6 @@ import (
 
 // Field error codes used in validation details.
 const (
-	FieldRequired      = "required"
 	FieldInvalidFormat = "invalid_format"
 	FieldOutOfRange    = "out_of_range"
 )

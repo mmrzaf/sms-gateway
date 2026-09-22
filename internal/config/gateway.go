@@ -231,16 +231,6 @@ func parseProviders(r *reader, key string) []Provider {
 	return list
 }
 
-// Provider returns the provider with the given name.
-func (p Providers) Provider(name string) (Provider, bool) {
-	for _, pr := range p.List {
-		if pr.Name == name {
-			return pr, true
-		}
-	}
-	return Provider{}, false
-}
-
 // String renders a summary that is safe to log: secrets are omitted.
 func (c Gateway) String() string {
 	names := make([]string, len(c.Providers.List))

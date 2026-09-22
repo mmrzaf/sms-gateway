@@ -33,7 +33,7 @@ func setup(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID) {
 func TestConsistentDataPasses(t *testing.T) {
 	pool, _, _ := setup(t)
 	report, err := invariant.Run(context.Background(), pool, cfg)
-	if err != nil || !report.OK || len(report.Checks) != len(invariant.Names()) {
+	if err != nil || !report.OK || len(report.Checks) != 7 {
 		t.Fatalf("report: %+v, %v", report, err)
 	}
 }

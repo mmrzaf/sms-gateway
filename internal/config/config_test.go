@@ -64,12 +64,6 @@ func TestLoadGatewayProviders(t *testing.T) {
 			t.Errorf("provider %d: got %+v, want %+v", i, c.Providers.List[i], want[i])
 		}
 	}
-	if p, ok := c.Providers.Provider("B"); !ok || p.URL != "http://provider-b:9002" {
-		t.Errorf("Provider(B) = %+v, %v", p, ok)
-	}
-	if _, ok := c.Providers.Provider("C"); ok {
-		t.Error("Provider(C) should not exist")
-	}
 }
 
 func TestLoadGatewayReportsEveryProblem(t *testing.T) {

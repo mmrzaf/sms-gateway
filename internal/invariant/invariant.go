@@ -118,15 +118,6 @@ var definitions = []definition{
 	},
 }
 
-// Names lists the checks in the order they run.
-func Names() []string {
-	names := make([]string, len(definitions))
-	for i, d := range definitions {
-		names[i] = d.name
-	}
-	return names
-}
-
 // Run executes every check in one snapshot.
 func Run(ctx context.Context, db *pgxpool.Pool, cfg Config) (Report, error) {
 	report := Report{OK: true}

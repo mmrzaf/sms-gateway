@@ -68,13 +68,6 @@ func (h *Histogram) Observe(v float64) {
 	h.sum += v
 }
 
-// Count returns the number of observations.
-func (h *Histogram) Count() uint64 {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.count
-}
-
 // CounterVec is a family of counters with labels.
 type CounterVec struct{ vec[Counter] }
 

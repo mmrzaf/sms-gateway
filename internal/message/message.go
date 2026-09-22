@@ -60,15 +60,6 @@ func ParseStatus(s string) (Status, bool) {
 	return "", false
 }
 
-// Terminal reports whether no further transition can leave the status.
-func (s Status) Terminal() bool {
-	switch s {
-	case StatusDelivered, StatusUndelivered, StatusFailed, StatusExpired:
-		return true
-	}
-	return false
-}
-
 // FailureReason explains why a message ended failed or expired.
 type FailureReason string
 

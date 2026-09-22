@@ -50,12 +50,6 @@ func TestStatuses(t *testing.T) {
 	if _, ok := ParseStatus("queued"); ok {
 		t.Error("unknown status accepted")
 	}
-	terminal := map[Status]bool{StatusDelivered: true, StatusUndelivered: true, StatusFailed: true, StatusExpired: true}
-	for _, st := range Statuses {
-		if st.Terminal() != terminal[st] {
-			t.Errorf("%s.Terminal() = %v", st, st.Terminal())
-		}
-	}
 }
 
 func ref(s string) *string { return &s }
