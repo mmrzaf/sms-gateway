@@ -13,11 +13,14 @@ import (
 
 	"github.com/google/uuid"
 	"golang.org/x/time/rate"
+
+	"github.com/mmrzaf/sms-gatway/internal/message"
 )
 
-// MinBurst is the smallest bucket capacity. It admits a maximum-size batch
-// from a full bucket regardless of the customer's rate.
-const MinBurst = 500
+// MinBurst is the smallest bucket capacity: one maximum-size batch. A batch
+// takes all its tokens at once and can never be admitted when it exceeds the
+// capacity, so the floor must admit MaxBatchSize from a full bucket.
+const MinBurst = message.MaxBatchSize
 
 // idleAfter is how long an unused bucket is kept before it is dropped.
 const idleAfter = 10 * time.Minute

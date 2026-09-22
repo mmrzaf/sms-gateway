@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/mmrzaf/sms-gatway/internal/message"
 )
 
 type clock struct{ t time.Time }
@@ -22,8 +24,8 @@ func newTestLimiter(instances int) (*Limiter, *clock) {
 func TestAllowWithinBurst(t *testing.T) {
 	l, _ := newTestLimiter(1)
 	id := uuid.New()
-	// rps 100 gives a burst of max(200, 500) = 500.
-	d := l.Allow(id, 100, 500)
+	// rps 100 gives a burst of max(200, MaxBatchSize).
+	d := l.Allow(id, 100, message.MaxBatchSize)
 	if !d.Allowed || d.Remaining != 0 || d.Limit != 100 {
 		t.Fatalf("full batch from a full bucket: %+v", d)
 	}
@@ -39,7 +41,7 @@ func TestAllowWithinBurst(t *testing.T) {
 func TestBucketRefills(t *testing.T) {
 	l, c := newTestLimiter(1)
 	id := uuid.New()
-	l.Allow(id, 100, 500)
+	l.Allow(id, 100, message.MaxBatchSize)
 	c.advance(time.Second)
 	if d := l.Allow(id, 100, 100); !d.Allowed {
 		t.Fatalf("100 tokens should refill in one second: %+v", d)
@@ -77,7 +79,7 @@ func TestLimitIsSharedAcrossInstances(t *testing.T) {
 func TestChangedLimitTakesEffect(t *testing.T) {
 	l, c := newTestLimiter(1)
 	id := uuid.New()
-	l.Allow(id, 10, 500)
+	l.Allow(id, 10, message.MaxBatchSize)
 	c.advance(time.Second)
 	l.Allow(id, 1000, 0) // raise the limit
 	c.advance(time.Second)
@@ -89,8 +91,8 @@ func TestChangedLimitTakesEffect(t *testing.T) {
 func TestCustomersAreIndependent(t *testing.T) {
 	l, _ := newTestLimiter(1)
 	a, b := uuid.New(), uuid.New()
-	l.Allow(a, 100, 500)
-	if d := l.Allow(b, 100, 500); !d.Allowed {
+	l.Allow(a, 100, message.MaxBatchSize)
+	if d := l.Allow(b, 100, message.MaxBatchSize); !d.Allowed {
 		t.Fatal("one customer's usage affected another")
 	}
 }

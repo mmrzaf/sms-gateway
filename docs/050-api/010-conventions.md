@@ -91,7 +91,7 @@ Keyset pagination costs the same on page 1,000 as on page 1 and does not skip or
 Each customer has a limit in messages per second (`rate_limit_rps`), enforced as a token bucket:
 
 - One token per message; a batch of `n` messages takes `n` tokens.
-- Bucket capacity is `max(2 × rate_limit_rps, 500)`, so a full bucket always admits a maximum-size batch.
+- Bucket capacity is `max(2 × rate_limit_rps, 500)` (500 = one maximum-size batch), so a full bucket always admits a maximum-size batch. Buckets live in process memory and start full, so a restart regrants burst.
 - Only message submission endpoints consume tokens. Reads, balance, and charges are not limited per customer.
 - When the bucket lacks tokens, the response is `429 rate_limited` with `Retry-After` in whole seconds.
 
