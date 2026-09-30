@@ -30,6 +30,7 @@ type completer struct {
 	// refunded is the credits refunded by the commit in progress; it is
 	// published only once the commit succeeds.
 	refunded int64
+	applied  []outcome
 }
 
 func newCompleter(w *Worker) *completer {
@@ -54,6 +55,7 @@ func (c *completer) run(ctx context.Context) {
 	size := c.w.cfg.CompleterBatchSize
 	batch := make([]outcome, 0, size)
 	timer := time.NewTimer(time.Hour)
+	defer timer.Stop()
 	timer.Stop()
 
 	flush := func() {
@@ -107,7 +109,7 @@ func (c *completer) flush(parent context.Context, batch []outcome) {
 			return c.commit(ctx, tx, batch)
 		})
 		if err == nil {
-			c.count(batch)
+			c.count(c.applied)
 			metrics.CompleterBatchSize.Observe(float64(len(batch)))
 			metrics.CreditsRefunded.Add(float64(c.refunded))
 			return
@@ -160,6 +162,7 @@ func (c *completer) count(batch []outcome) {
 // commit applies a batch inside tx. Outcomes are sorted by message ID so
 // that concurrent transactions lock rows in the same order.
 func (c *completer) commit(ctx context.Context, tx pgx.Tx, batch []outcome) error {
+	c.applied = nil
 	sorted := slices.Clone(batch)
 	slices.SortFunc(sorted, func(a, b outcome) int { return compareIDs(a.job.ID, b.job.ID) })
 
@@ -247,7 +250,7 @@ func (c *completer) commitSent(ctx context.Context, tx pgx.Tx, outcomes []outcom
 		ids[i], providers[i], refs[i] = o.job.ID, o.provider, o.providerRef
 		snaps[i] = int32(o.job.Attempts)
 	}
-	if _, err := tx.Exec(ctx, `
+	rows, err := tx.Query(ctx, `
 		UPDATE messages m
 		SET status = CASE WHEN m.status = 'accepted' THEN 'sent' ELSE m.status END,
 		    sent_at = COALESCE(m.sent_at, now()),
@@ -258,10 +261,17 @@ func (c *completer) commitSent(ctx context.Context, tx pgx.Tx, outcomes []outcom
 		                   OR (m.type = 'express' AND now() - m.accepted_at > $5 * interval '1 millisecond'),
 		    updated_at = now()
 		FROM unnest($1::uuid[], $2::text[], $3::text[], $4::int[]) AS r(id, provider, provider_ref, snap)
-		WHERE m.id = r.id AND m.status NOT IN ('failed', 'expired')`,
-		ids, providers, refs, snaps, c.w.cfg.ExpressSLA.Milliseconds()); err != nil {
+		WHERE m.id = r.id AND m.status NOT IN ('failed', 'expired') AND m.sent_at IS NULL
+ RETURNING m.id`,
+		ids, providers, refs, snaps, c.w.cfg.ExpressSLA.Milliseconds())
+	if err != nil {
 		return fmt.Errorf("record sent messages: %w", err)
 	}
+	changed, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		return fmt.Errorf("read sent messages: %w", err)
+	}
+	c.recordApplied(outcomes, changed)
 	return c.deleteQueueRows(ctx, tx, ids)
 }
 
@@ -293,6 +303,7 @@ func (c *completer) commitRetry(ctx context.Context, tx pgx.Tx, outcomes []outco
 		return fmt.Errorf("record failed attempts: %w", err)
 	}
 
+	c.recordApplied(outcomes, pending)
 	pendingDelays := make([]int64, len(pending))
 	isPending := make(map[uuid.UUID]bool, len(pending))
 	for i, id := range pending {
@@ -328,14 +339,21 @@ func (c *completer) commitDeferred(ctx context.Context, tx pgx.Tx, outcomes []ou
 		ids[i] = o.job.ID
 		delays[i] = o.delay.Milliseconds()
 	}
-	if _, err := tx.Exec(ctx, `
+	rows, err := tx.Query(ctx, `
 		UPDATE queue q
 		SET lease_owner = NULL, next_attempt_at = now() + r.delay_ms * interval '1 millisecond'
 		FROM unnest($1::uuid[], $2::bigint[]) AS r(id, delay_ms)
-		WHERE q.message_id = r.id AND lease_owner = $3`,
-		ids, delays, c.w.id); err != nil {
+		WHERE q.message_id = r.id AND lease_owner = $3
+ RETURNING q.message_id`,
+		ids, delays, c.w.id)
+	if err != nil {
 		return fmt.Errorf("defer messages: %w", err)
 	}
+	changed, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		return fmt.Errorf("read deferred messages: %w", err)
+	}
+	c.recordApplied(outcomes, changed)
 	return nil
 }
 
@@ -391,9 +409,12 @@ func (c *completer) commitTerminal(ctx context.Context, tx pgx.Tx, outcomes []ou
 	if err := billing.ApplyRefunds(ctx, tx, refunds); err != nil {
 		return err
 	}
-	for _, r := range refunds {
+	changed := make([]uuid.UUID, len(refunds))
+	for i, r := range refunds {
 		c.refunded += r.Amount
+		changed[i] = r.MessageID
 	}
+	c.recordApplied(outcomes, changed)
 	return c.deleteQueueRows(ctx, tx, ids)
 }
 
@@ -415,4 +436,18 @@ func compareIDs(a, b uuid.UUID) int {
 		}
 	}
 	return 0
+}
+
+// recordApplied keeps metrics tied to rows changed by the transaction.
+func (c *completer) recordApplied(outcomes []outcome, ids []uuid.UUID) {
+	changed := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		changed[id] = true
+	}
+	for _, o := range outcomes {
+		if changed[o.job.ID] {
+			c.applied = append(c.applied, o)
+			delete(changed, o.job.ID)
+		}
+	}
 }

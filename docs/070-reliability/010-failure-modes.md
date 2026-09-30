@@ -7,7 +7,7 @@ What happens when each part of the system fails, what the customer observes, and
 | Boundary | Guarantee |
 |---|---|
 | Customer → gateway | A `202` response means the message is committed. Without a response, the customer retries with the same `client_ref` and receives the original result. |
-| Gateway → provider | At least once. Duplicates are absorbed by provider deduplication on the message ID, except after Express failover following a timeout. |
+| Gateway → provider | At least once. Duplicates are absorbed by provider deduplication on the message ID, while retrying the same provider with retained state. Either class can duplicate after a provider switch. |
 | Provider → gateway (DLR) | At least once. Duplicates are harmless because status changes are compare-and-set. |
 | Credits | Exactly once. Each message has one debit and at most one refund, enforced by unique constraints. |
 
@@ -19,10 +19,10 @@ What happens when each part of the system fails, what the customer observes, and
 | 2 | API process crashes after commit, before responding | Message accepted and debited | Customer retries with the same `client_ref`; replay returns the original | Connection error; retry returns `202` with `Idempotent-Replayed: true` |
 | 3 | Database unavailable | API returns `503`; workers cannot claim; DLR intake returns `503` | Automatic when the database returns; providers retry DLRs | `503` responses; no accepted message lost |
 | 4 | Worker crashes after claiming | Claimed rows stay leased | Lease expires after 30 s; rows are claimed again | Up to 30 s extra latency for affected messages |
-| 5 | Worker crashes after the provider accepted, before the completer committed | Provider accepted; database still shows `accepted` | Lease expires; retry is deduplicated by the provider and returns the original reference | Extra latency; no duplicate SMS |
-| 6 | Completer transaction fails repeatedly | Outcomes dropped | Leases expire; messages retried and deduplicated | Extra latency |
+| 5 | Worker crashes after the provider accepted, before the completer committed | Provider accepted; database still shows `accepted` | Lease expires; the same provider deduplicates a retry, but recovery can select another provider | Extra latency; possible duplicate SMS after a provider switch |
+| 6 | Completer transaction fails repeatedly | Outcomes dropped | Leases expire; retry is deduplicated if it reaches the same provider with retained state | Extra latency; possible duplicate after a provider switch |
 | 7 | Provider returns `5xx` or throttles | Retryable failure | Backoff and retry; normal messages switch provider if the circuit opens, Express rotates | Extra attempts visible on the message |
-| 8 | Provider times out | Outcome unknown | Retry: same provider for normal (deduplicated); next provider for Express | Possible duplicate SMS for Express only |
+| 8 | Provider times out | Outcome unknown | Retry: first usable provider for normal, rotating start for Express; timeouts can open circuits | Possible duplicate SMS for either class after a provider switch |
 | 9 | Provider rejects the message | Permanent failure | None needed | `failed`, `rejected`, refunded |
 | 10 | Provider outage | Circuit opens in every worker within 20 requests | Traffic moves to the other provider; if none is usable, messages are deferred without consuming attempts; circuit probes every 10 s | Latency; messages past TTL expire and are refunded |
 | 11 | All providers down longer than the TTL | Messages cannot be dispatched | Sweeper expires and refunds them | `expired`, refunded |

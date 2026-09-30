@@ -15,7 +15,7 @@ How workers classify provider responses, when and how they retry, how they choos
 
 A permanent error ends the message as `failed` with reason `rejected` and refunds it. A retryable error schedules another attempt unless the attempt limit or TTL is reached.
 
-A timeout is ambiguous: the provider may have accepted the message. The retry carries the same message ID, and the provider returns the original result instead of sending again. See [Decision 006](../110-decisions/006-at-least-once-dispatch.md).
+A timeout is ambiguous: the provider may have accepted the message. The retry carries the same message ID. When it reaches the same provider and that provider retains its deduplication state, it returns the original result instead of sending again. See [Decision 006](../110-decisions/006-at-least-once-dispatch.md).
 
 ## Retry policy
 
@@ -51,7 +51,7 @@ Providers are listed in `PROVIDERS` in priority order, for example `A` then `B`.
 | Normal | The first usable provider in priority order. Traffic moves to `B` only while `A`'s circuit is open, and returns when it closes. |
 | Express | Start at index `attempts mod len(providers)` and take the first usable provider from there. The first attempt uses `A`, the second `B`, the third `A`, and so on, skipping unusable ones. |
 
-Normal messages do not rotate providers on a timeout. They retry the same provider, whose deduplication turns the retry into a safe status check. Express rotates on every retry to avoid waiting on a struggling provider, and accepts the rare duplicate that results when the first provider had in fact accepted the message.
+Normal messages start every attempt at the first usable provider. They usually retry the same provider, but timeouts count toward opening its circuit, which can move a later attempt to another provider. Express rotates its starting provider on every retry. Both classes can produce a duplicate transmission if the first provider accepted before timing out and a later attempt uses another provider; deduplication is local to each provider.
 
 If no provider is usable, the message is **deferred**: returned to the queue without counting an attempt, with `next_attempt_at = now + CIRCUIT_OPEN_DURATION`. A provider outage therefore consumes time, not attempts. A job whose lease already expired when its turn to send arrives is likewise deferred, but released immediately for reclaim with a fresh lease. Messages that exceed their TTL while deferred are expired and refunded by the sweeper.
 

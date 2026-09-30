@@ -24,7 +24,7 @@ Every process serves Prometheus metrics at `/metrics`: the API role on the admin
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
 | `sms_dispatch_attempts_total` | counter | `provider`, `type`, `outcome` | Attempts: `sent`, `retry`, `rejected`, `timeout` |
-| `sms_messages_completed_total` | counter | `type`, `status` | Messages reaching `sent`, `failed`, or `expired` through this worker |
+| `sms_messages_completed_total` | counter | `type`, `status` | Committed dispatch changes recorded by this worker: provider acceptance, failure, or expiry. An early DLR can preserve `delivered` or `undelivered` while provider acceptance is recorded |
 | `sms_deferrals_total` | counter | `type` | Messages deferred for lack of a usable provider |
 | `sms_credits_refunded_total` | counter | — | Credits refunded |
 | `sms_provider_request_duration_seconds` | histogram | `provider` | Provider call latency |
@@ -55,6 +55,8 @@ Every process serves Prometheus metrics at `/metrics`: the API role on the admin
 | `rate(sms_express_sla_breaches_total[5m])` > 0 | Express SLA is being missed |
 | Invariant checker reports a violation | Correctness defect; investigate immediately |
 | `rate(sms_dlr_received_total{outcome="unknown"}[5m])` rising | Providers report messages the gateway does not know |
+
+Completion counters are published only after commit and only for rows changed by SQL. Stale leases, repeated completions, and failure/retry outcomes superseded by a DLR do not increment them. Attempt counters describe provider calls and can increase even when the completion is later rejected.
 
 ## Logs
 

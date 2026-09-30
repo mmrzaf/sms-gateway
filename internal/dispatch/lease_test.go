@@ -46,8 +46,9 @@ func TestReclaimedLeaseRejectsLateCompletion(t *testing.T) {
 					reason = message.ReasonExpired
 				}
 				late := outcome{kind: kind, job: old[0], provider: "A", providerRef: "late", reason: reason, attempted: true, delay: time.Hour}
-				if err := store.WithTx(ctx, db, func(tx pgx.Tx) error { return first.completer.commit(ctx, tx, []outcome{late}) }); err != nil {
-					t.Fatal(err)
+				first.completer.flush(ctx, []outcome{late})
+				if first.counters.Sent.Load() != 0 || first.counters.Retried.Load() != 0 || first.counters.Failed.Load() != 0 || first.counters.Expired.Load() != 0 || first.counters.Deferred.Load() != 0 {
+					t.Fatal("stale outcome changed completion counters")
 				}
 				got := reload(t, svc, m)
 				if got.Status != message.StatusAccepted || got.Attempts != 0 || got.SentAt != nil {
@@ -78,4 +79,46 @@ func TestReclaimedLeaseRejectsLateCompletion(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestCompletionCountersReflectAppliedRows(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.DB(t)
+	svc := newMessages(db, 4)
+	customer, _ := testutil.Customer(t, db, 100)
+	w := New(testConfig("http://unused"), db, discard)
+	lane := message.Lane(message.Normal, customer.ID, 4)
+	m := accept(t, svc, customer.ID, message.Normal, "+989121234567")
+	jobs, err := w.claim(ctx, lane, 1)
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("claim: %v, %v", jobs, err)
+	}
+	sent := outcome{kind: outcomeSent, job: jobs[0], provider: "A", providerRef: "current", attempted: true}
+	w.completer.flush(ctx, []outcome{sent})
+	w.completer.flush(ctx, []outcome{sent})
+	if w.counters.Sent.Load() != 1 {
+		t.Fatalf("repeated success counted: %d", w.counters.Sent.Load())
+	}
+	if got := reload(t, svc, m); got.Attempts != 1 {
+		t.Fatalf("attempts: %d", got.Attempts)
+	}
+
+	for _, kind := range []outcomeKind{outcomeFailed, outcomeRetry} {
+		m := accept(t, svc, customer.ID, message.Normal, "+989121234568")
+		jobs, err := w.claim(ctx, lane, 1)
+		if err != nil || len(jobs) != 1 {
+			t.Fatalf("claim: %v, %v", jobs, err)
+		}
+		if _, err := db.Exec(ctx, `UPDATE messages SET status = 'delivered', completed_at = now() WHERE id = $1`, m.ID); err != nil {
+			t.Fatal(err)
+		}
+		w.completer.flush(ctx, []outcome{{kind: kind, job: jobs[0], reason: message.ReasonRejected, attempted: true}})
+		if w.counters.Failed.Load() != 0 || w.counters.Retried.Load() != 0 {
+			t.Fatal("superseded outcome counted")
+		}
+		if got := reload(t, svc, m); got.Status != message.StatusDelivered {
+			t.Fatalf("terminal status changed: %s", got.Status)
+		}
+	}
+	testutil.AssertInvariants(t, db)
 }

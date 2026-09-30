@@ -166,11 +166,15 @@ The sweeper runs every 10 seconds (`SWEEP_INTERVAL`) in every worker process. Ea
 On `SIGTERM` or `SIGINT` a worker:
 
 1. Stops claiming and stops listening for notifications.
-2. Waits up to 10 seconds (`SHUTDOWN_TIMEOUT`) for in-flight sends to finish.
-3. Flushes the completer.
+2. Gives in-flight sends and completion commits one shared 10-second drain deadline (`SHUTDOWN_TIMEOUT`).
+3. Flushes the completer within that deadline; remaining work keeps its lease for recovery.
 4. Deletes its `workers` row and exits.
 
 Messages whose sends did not finish in time keep their lease until it expires and are then reclaimed by other workers.
+
+Completion transactions have a deadline of `SHUTDOWN_TIMEOUT`, including their retry waits. On shutdown, workers stop claiming and share one drain deadline across provider sends, completion submission, and database commits. An outcome that cannot commit stays queued until lease recovery. Recovery can transmit again; provider deduplication is scoped to each provider.
+
+The delivery-report batcher uses the same timeout for each database transaction and for its shutdown drain. A timed-out report is not acknowledged as durable, so the provider can retry it. Row locks cannot extend either drain indefinitely.
 
 ## Related
 
@@ -178,9 +182,3 @@ Messages whose sends did not finish in time keep their lease until it expires an
 - [Retries and failover](030-retries-and-failover.md)
 - [Decision 001: PostgreSQL as the queue](../110-decisions/001-postgres-as-queue.md)
 - [Failure modes](../070-reliability/010-failure-modes.md)
-
-## Bounded completion and shutdown
-
-Completion transactions have a deadline of `SHUTDOWN_TIMEOUT`, including their retry waits. On shutdown, workers stop claiming and share one drain deadline across provider sends, completion submission, and database commits. An outcome that cannot commit stays queued until lease recovery. Recovery can transmit again; provider deduplication is scoped to each provider.
-
-The delivery-report batcher uses the same timeout for each database transaction and for its shutdown drain. A timed-out report is not acknowledged as durable, so the provider can retry it. Row locks cannot extend either drain indefinitely.

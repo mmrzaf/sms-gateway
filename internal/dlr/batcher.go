@@ -92,6 +92,7 @@ func (b *Batcher) Run(ctx context.Context) {
 	defer cancel()
 	batch := make([]pending, 0, b.size)
 	timer := time.NewTimer(time.Hour)
+	defer timer.Stop()
 	timer.Stop()
 	flush := func() {
 		timer.Stop()

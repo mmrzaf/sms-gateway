@@ -13,7 +13,7 @@ Historical results of running B1–B7 locally, without Docker, on one developmen
 | B4 | Dispatch, one worker | 10,517 msgs/s | 10,416 / 10,517 / 10,652 |
 | B5 | Sustained end-to-end rate | 500 msg/s | PASS at 500; FAIL at 1,000 (backlog 14,704) |
 | B6 | Express accept-to-sent p99 | 10.681 s | FAIL (target < 2 s); 0 SLA breaches |
-| B7 | DLR intake | 1,481.9/s | 1,481.9 / 1,482.5 / 1,474.6 |
+| B7 | Mixed DLR acknowledgments (mostly duplicates) | 1,481.9/s | 1,481.9 / 1,482.5 / 1,474.6 |
 | — | `gateway check` | All 7 checks PASS | Final database state |
 
 B3 acceptance exceeds the 10,000 msg/s design peak, but the topology sustains only 500 msg/s end to end before failing at 1,000 msg/s. The B2 median is below the capacity analysis estimate of 500–2,000 single-message accepts/s for one customer.
@@ -176,7 +176,7 @@ The post-B7 snapshot from worker `:8082` represents one worker, not both workers
 - B2 is much slower than B1 while API CPU is low. This is consistent with serialization on one customer row, but commit latency and lock-wait scheduling are not isolated.
 - B3 amortizes commits: batch-100 reaches 21,561.9 msg/s at 329.03 median commits/s and batch-500 reaches 24,612.2 msg/s at 94.21 median commits/s. WAL remains 43–50 MB/s because every message still writes rows and indexes.
 - B4 exceeds 10,000 msgs/s, yet B5 fails at 1,000 msg/s. B5 shows neither sampled CPU saturation nor high provider latency, so these measurements do not identify the end-to-end limiter.
-- B6 keeps HTTP latency low but fails the separate two-second accept-to-sent performance target. The 10.681 s p99 remains below the default 30 s Express SLA, which explains why the run records zero SLA breaches.
+- B6 keeps HTTP latency low but fails the separate two-second accept-to-sent performance target. The reported p99 is below the default 30 s Express SLA, but a percentile does not establish the maximum. The zero-breach result comes from the separate persisted breach check.
 - B7 throughput varies by less than 0.6%, with no sampled host-wide CPU saturation.
 
 ## Comparison with the capacity analysis

@@ -24,7 +24,7 @@ All run with `make test-integration`, and all end with the invariant checker.
 | IT14 | Late DLR on failed message | Message `failed`, then `delivered` DLR | Status stays `failed`; DLR counted `ignored_terminal`; refund unchanged |
 | IT15 | Circuit breaker | Provider A fails; threshold 5 | Circuit opens after 5 failures; normal traffic goes to B; A is probed and closes after recovery |
 | IT16 | Express rotation | Provider A times out | Second attempt goes to B; message `sent` via B |
-| IT17 | Normal does not rotate on timeout | Provider A times out once | Retry goes to A and is deduplicated; B receives nothing |
+| IT17 | Normal retries the preferred usable provider | Provider A times out once, below the circuit threshold | Retry goes to A and is deduplicated; B receives nothing |
 | IT18 | Lane fairness | 10,000 rows in `normal-0`, 10 rows in `normal-1` | All `normal-1` rows claimed within the first rotation |
 | IT19 | Express isolation | 10,000 normal rows ready, then 1 Express message | Express message claimed by the Express pool before any further normal claim completes |
 | IT20 | Concurrent sweepers | Two sweepers over the same expired rows | Each message expired and refunded exactly once |

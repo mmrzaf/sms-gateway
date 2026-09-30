@@ -21,7 +21,7 @@ A customer sends an Express message by setting `"type": "express"`.
 ## What Express does not guarantee
 
 - **Delivery to the handset.** No gateway can guarantee this; the handset may be off or the number inactive. The DLR reports the outcome.
-- **Exactly-once transmission.** If provider A times out after actually accepting a message, the retry goes to provider B, and the recipient can receive the message twice. Express deliberately trades a rare duplicate for latency. Normal messages do not fail over on timeouts, so they do not have this duplicate path. See [Decision 006](../110-decisions/006-at-least-once-dispatch.md).
+- **Exactly-once transmission.** If provider A times out after actually accepting a message, the retry goes to provider B, and the recipient can receive the message twice. Express deliberately trades a rare duplicate for latency. Normal messages can also switch providers when timeouts open the preferred provider's circuit, and have the same duplicate risk after that switch. See [Decision 006](../110-decisions/006-at-least-once-dispatch.md).
 
 ## Policy comparison
 

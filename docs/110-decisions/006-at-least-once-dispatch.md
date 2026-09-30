@@ -8,7 +8,7 @@ Between a worker's call to a provider and the commit of its outcome, the worker 
 
 ## Decision
 
-Dispatch is at least once. The gateway sends its message ID with every request, and providers deduplicate on it, returning the original result for a repeated ID. Leases guarantee that any message whose outcome was not committed is attempted again. Normal messages retry the same provider after a timeout, so the retry is deduplicated. Express messages move to the next provider on every retry and accept that a timeout after acceptance can produce a duplicate transmission.
+Dispatch is at least once. The gateway sends its message ID with every request, and providers deduplicate on it, returning the original result for a repeated ID. Leases guarantee that any message whose outcome was not committed is attempted again. Normal messages choose the first usable provider on every attempt. They normally retry the same provider, but timeouts count toward opening its circuit; a later attempt can therefore use another provider. Express rotates its starting provider on each attempt. Deduplication works only when retrying the same provider while it retains its state. Either class can transmit twice after an ambiguous timeout followed by a provider switch.
 
 ## Alternatives considered
 
@@ -23,12 +23,12 @@ Dispatch is at least once. The gateway sends its message ID with every request, 
 Positive:
 
 - No accepted message is lost to any process crash.
-- Normal messages are transmitted once in every failure case in which the provider keeps its deduplication state.
+- Retries to the same provider do not transmit again while its deduplication state is retained.
 - Recovery needs no special code: an expired lease makes a row claimable again.
 
 Negative:
 
-- Express can transmit twice after a timeout followed by failover.
+- Both classes can transmit twice after a timeout followed by failover. Express rotates sooner; normal traffic switches when the preferred provider is unusable.
 - A provider restart that loses its deduplication state can produce a duplicate for a message in flight.
 
 ## Related
