@@ -71,7 +71,7 @@ make loadtest SCENARIO=noisy-neighbor
 make loadtest SCENARIO=express-under-load
 ```
 
-`bulkco` saturates the normal lanes while `quickpay` sends Express messages. The dashboard's Express latency panel (p50/p95/p99, accept to sent) stays low and the SLA breach counter stays at zero, because Express has its own lane, its own worker pool, and reserved provider capacity. See [Express messages](../030-domain/040-express-messages.md).
+`bulkco` saturates the normal lanes while `quickpay` sends Express messages. Inspect the Express latency panel and the SLA breach counter. The published benchmark currently misses the scenario's two-second accept-to-sent p99 target (10.681 seconds); the default Express SLA is 30 seconds, so zero SLA breaches can still be consistent with that slower p99. This scenario is useful for showing both the intended isolation and the performance gap still to solve. See [Express messages](../030-domain/040-express-messages.md) and the [benchmark result](../080-scalability/040-benchmark-report.md#b6--express-under-normal-saturation).
 
 ## 6. Provider outage and failover
 

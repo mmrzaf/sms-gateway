@@ -2,7 +2,7 @@
 
 A multi-tenant SMS gateway backend in Go. Customers send messages through a REST API and pay in credits; the gateway dispatches them to SMS providers with retries, failover, circuit breaking, and delivery tracking. An Express service class gets a dedicated lane, reserved provider capacity, and SLA tracking.
 
-The system is designed for **100 million messages per day** (10,000 messages/s at peak) and deploys at minimum scale on a single node. PostgreSQL is both the source of truth and the dispatch queue, so accepting a message, debiting its cost, and enqueueing it are one transaction.
+The design target is **100 million messages per day** (10,000 messages/s at peak), but current end-to-end benchmarks have not demonstrated that capacity. The reference-machine report records 500 messages/s sustained and a failed Express latency target; see [Benchmark results](docs/080-scalability/040-benchmark-report.md). PostgreSQL is both the source of truth and dispatch queue, so accepting a message, debiting its cost, and enqueueing it happen in one transaction.
 
 ## What it guarantees
 
@@ -75,8 +75,9 @@ See [Code organization](docs/020-architecture/040-code-organization.md) for pack
 
 | Command | Runs |
 |---|---|
-| `make test` | Unit tests |
+| `make test` | Race-enabled tests; PostgreSQL integration tests are skipped when `TEST_DATABASE_URL` is unset |
 | `make test-integration` | All tests against PostgreSQL, each in its own schema |
+| CI test job | Race-enabled tests against PostgreSQL 17 |
 | `make loadtest SCENARIO=<name>` | A k6 scenario with pass criteria: `balance-race`, `steady`, `burst`, `noisy-neighbor`, `express-under-load`, `provider-outage`, `provider-chaos` |
 | `make chaos SCENARIO=<name>` | Steady load with an injected failure: `worker-kill`, `api-kill`, `provider-restart`, `db-restart` |
 | `make bench` | The benchmark suite, with results in `loadtest/results/` |

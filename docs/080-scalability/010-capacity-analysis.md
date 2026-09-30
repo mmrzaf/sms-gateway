@@ -1,6 +1,6 @@
 # Capacity Analysis
 
-Whether the design reaches 100 million messages per day, where the limits are, and what each component needs at the target rate. Figures marked *estimate* are engineering estimates to be confirmed by [Benchmarks](020-benchmarks.md).
+Planning assumptions for a design target of 100 million messages per day: where limits may arise and what each component would need at the target rate. This target has not been demonstrated end to end; see the measured [Benchmark report](040-benchmark-report.md). Figures marked *estimate* are engineering estimates to be confirmed by benchmarks.
 
 ## Target
 

@@ -174,7 +174,7 @@ The post-B7 snapshot from worker `:8082` represents one worker, not both workers
 - B2 is much slower than B1 while API CPU is low. This is consistent with serialization on one customer row, but commit latency and lock-wait scheduling are not isolated.
 - B3 amortizes commits: batch-100 reaches 21,561.9 msg/s at 329.03 median commits/s and batch-500 reaches 24,612.2 msg/s at 94.21 median commits/s. WAL remains 43–50 MB/s because every message still writes rows and indexes.
 - B4 exceeds 10,000 msgs/s, yet B5 fails at 1,000 msg/s. B5 shows neither sampled CPU saturation nor high provider latency, so these measurements do not identify the end-to-end limiter.
-- B6 keeps HTTP latency low but fails accept-to-sent latency. Zero SLA breaches and a 10.681 s scenario p99 are distinct recorded measurements; their divergence is not explained by this run.
+- B6 keeps HTTP latency low but fails the separate two-second accept-to-sent performance target. The 10.681 s p99 remains below the default 30 s Express SLA, which explains why the run records zero SLA breaches.
 - B7 throughput varies by less than 0.6%, with no sampled host-wide CPU saturation.
 
 ## Comparison with the capacity analysis

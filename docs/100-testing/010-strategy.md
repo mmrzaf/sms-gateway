@@ -37,7 +37,7 @@ Table-driven tests are used throughout.
 
 ## Integration tests
 
-Integration tests run against the PostgreSQL named by `TEST_DATABASE_URL`: the compose database locally (`make test-integration` starts it) and a service container in CI. Each test creates its own schema, applies the migrations into it, and drops it at the end, so tests are isolated from one another and can run in parallel against one database. When `TEST_DATABASE_URL` is not set, these tests are skipped, so `go test ./...` works anywhere.
+`make test` runs the race-enabled Go test suite. Integration tests run only when `TEST_DATABASE_URL` is set; otherwise they are skipped, so the command works without a database. `make test-integration` starts the local Compose PostgreSQL service and runs the same suite with the database URL set. CI runs the suite against its PostgreSQL 17 service container. Each integration test creates its own schema, applies the migrations into it, and drops it at the end, so tests are isolated and can run in parallel against one database.
 
 Providers are `httptest` servers running the fake provider's handler, so their behavior can be scripted per test.
 
