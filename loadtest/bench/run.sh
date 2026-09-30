@@ -25,6 +25,7 @@ trap 'kill $SAMPLER 2>/dev/null || true' EXIT
 
 run() {
   local name=$1; shift
+  "$K6" run --quiet loadtest/bench/drain.js || return $?
   echo "== $name"
   "$K6" run --quiet --summary-export "$OUT/$name.json" "$@" | tee "$OUT/$name.txt"
 }
@@ -33,15 +34,18 @@ run B1-accept loadtest/bench/accept.js
 run B2-accept-one-customer -e CUSTOMERS=1 loadtest/bench/accept.js
 run B3-batch-100 -e BATCH=100 loadtest/bench/batch.js
 run B3-batch-500 -e BATCH=500 loadtest/bench/batch.js
+FAILED=0
 for rate in ${E2E_RATES:-500 1000 2000 4000}; do
-  run "B5-e2e-$rate" -e RATE="$rate" loadtest/bench/e2e.js || true
+  if ! run "B5-e2e-$rate" -e RATE="$rate" loadtest/bench/e2e.js; then FAILED=1; fi
 done
-run B6-express-under-load loadtest/scenarios/express-under-load.js || true
+if ! run B6-express-under-load loadtest/scenarios/express-under-load.js; then FAILED=1; fi
 run B7-dlr loadtest/bench/dlr.js
 
+"$K6" run --quiet loadtest/bench/drain.js
 echo "== B4-dispatch"
 TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://gateway:gateway@localhost:5432/gateway?sslmode=disable} \
   go test -run '^$' -bench BenchmarkDispatch -benchtime 20000x ./internal/dispatch/ | tee "$OUT/B4-dispatch.txt"
 
 $COMPOSE exec -T gateway-api gateway check | tee "$OUT/invariants.txt"
 echo "Results written to $OUT"
+exit "$FAILED"

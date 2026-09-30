@@ -1,6 +1,6 @@
 # Benchmark Report
 
-Results of running B1–B7 locally, without Docker, on one development machine. This report records the measured ceilings and compares them with [Capacity analysis](010-capacity-analysis.md).
+Historical results of running B1–B7 locally, without Docker, on one development machine. This report records the measured ceilings and compares them with [Capacity analysis](010-capacity-analysis.md).
 
 ## Summary
 
@@ -17,6 +17,8 @@ Results of running B1–B7 locally, without Docker, on one development machine. 
 | — | `gateway check` | All 7 checks PASS | Final database state |
 
 B3 acceptance exceeds the 10,000 msg/s design peak, but the topology sustains only 500 msg/s end to end before failing at 1,000 msg/s. The B2 median is below the capacity analysis estimate of 500–2,000 single-message accepts/s for one customer.
+
+The historical B7 script repeatedly selected from 20,000 IDs during warm-up and measurement, while provider callbacks also completed them. Its rate mixes first reports and duplicates and must not be presented as unique DLR completion throughput. The current B7 script explicitly measures duplicate acknowledgments; these historical numbers have not been rerun with it. The current B5 and B6 scripts also have stricter acceptance, load, and drain checks, so historical passes are not evidence of passing the revised suite.
 
 ## Environment
 
@@ -147,7 +149,7 @@ The highest passing offered rate is **500 msg/s**.
 
 HTTP request duration is 6.40 ms median, 20.64 ms p95, and 516.90 ms maximum. The run records 259.11 commits/s, 3.372 MB/s WAL, and CPU of 224.1% / 18.9% / 8.6% / 44.7% / 4.3%.
 
-### B7 — DLR intake
+### B7 — Historical mixed DLR acknowledgments
 
 `k6 run -e PROVIDER_SECRET=local-provider-secret loadtest/bench/dlr.js`
 
