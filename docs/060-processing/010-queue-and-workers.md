@@ -178,3 +178,9 @@ Messages whose sends did not finish in time keep their lease until it expires an
 - [Retries and failover](030-retries-and-failover.md)
 - [Decision 001: PostgreSQL as the queue](../110-decisions/001-postgres-as-queue.md)
 - [Failure modes](../070-reliability/010-failure-modes.md)
+
+## Bounded completion and shutdown
+
+Completion transactions have a deadline of `SHUTDOWN_TIMEOUT`, including their retry waits. On shutdown, workers stop claiming and share one drain deadline across provider sends, completion submission, and database commits. An outcome that cannot commit stays queued until lease recovery. Recovery can transmit again; provider deduplication is scoped to each provider.
+
+The delivery-report batcher uses the same timeout for each database transaction and for its shutdown drain. A timed-out report is not acknowledged as durable, so the provider can retry it. Row locks cannot extend either drain indefinitely.

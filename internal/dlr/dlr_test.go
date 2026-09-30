@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -91,7 +92,7 @@ func TestApplyOutcomes(t *testing.T) {
 func TestHandler(t *testing.T) {
 	pool := testutil.DB(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	b := dlr.NewBatcher(pool, 500, 5*time.Millisecond, slog.New(slog.DiscardHandler))
+	b := dlr.NewBatcher(pool, 500, 5*time.Millisecond, 2*time.Second, slog.New(slog.DiscardHandler))
 	done := make(chan struct{})
 	go func() { defer close(done); b.Run(ctx) }()
 	t.Cleanup(func() { cancel(); <-done })
@@ -138,7 +139,7 @@ func TestHandler(t *testing.T) {
 func TestBatcherCommitsConcurrentReports(t *testing.T) {
 	pool := testutil.DB(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	b := dlr.NewBatcher(pool, 50, 20*time.Millisecond, slog.New(slog.DiscardHandler))
+	b := dlr.NewBatcher(pool, 50, 20*time.Millisecond, 2*time.Second, slog.New(slog.DiscardHandler))
 	done := make(chan struct{})
 	go func() { defer close(done); b.Run(ctx) }()
 
@@ -167,5 +168,56 @@ func TestBatcherCommitsConcurrentReports(t *testing.T) {
 		if s := statusOf(t, pool, id); s != "delivered" {
 			t.Fatalf("message %s is %s", id, s)
 		}
+	}
+}
+
+func TestBatcherBoundsLockedTransactions(t *testing.T) {
+	for _, shutdown := range []bool{false, true} {
+		t.Run(fmt.Sprintf("shutdown=%t", shutdown), func(t *testing.T) {
+			pool := testutil.DB(t)
+			id := newMessage(t, pool, message.StatusSent)
+			blocker, err := pool.Begin(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer blocker.Rollback(context.Background())
+			if _, err := blocker.Exec(context.Background(), `SELECT id FROM messages WHERE id = $1 FOR UPDATE`, id); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			b := dlr.NewBatcher(pool, 1, time.Millisecond, 100*time.Millisecond, slog.New(slog.DiscardHandler))
+			done := make(chan struct{})
+			go func() { defer close(done); b.Run(ctx) }()
+			result := make(chan error, 1)
+			go func() {
+				_, err := b.Submit(context.Background(), dlr.Report{MessageID: id, Provider: "A", ProviderRef: "r", Status: "delivered"})
+				result <- err
+			}()
+			if shutdown {
+				time.Sleep(20 * time.Millisecond)
+				cancel()
+			}
+			select {
+			case err := <-result:
+				if err == nil {
+					t.Fatal("locked report acknowledged as durable")
+				}
+			case <-time.After(time.Second):
+				t.Fatal("report transaction did not time out")
+			}
+			cancel()
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Fatal("batcher shutdown did not finish")
+			}
+			if err := blocker.Rollback(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if s := statusOf(t, pool, id); s != "sent" {
+				t.Fatalf("cancelled report changed status: %s", s)
+			}
+		})
 	}
 }

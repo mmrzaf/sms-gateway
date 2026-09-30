@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/mmrzaf/sms-gatway/internal/lifecycle"
 	"github.com/mmrzaf/sms-gatway/internal/metrics"
 )
 
@@ -20,6 +21,7 @@ type Batcher struct {
 	db       *pgxpool.Pool
 	size     int
 	interval time.Duration
+	timeout  time.Duration
 	logger   *slog.Logger
 
 	in      chan pending
@@ -39,11 +41,12 @@ type result struct {
 
 // NewBatcher returns a batcher that commits up to size reports at a time, at
 // least every interval.
-func NewBatcher(db *pgxpool.Pool, size int, interval time.Duration, logger *slog.Logger) *Batcher {
+func NewBatcher(db *pgxpool.Pool, size int, interval, timeout time.Duration, logger *slog.Logger) *Batcher {
 	return &Batcher{
 		db:       db,
 		size:     size,
 		interval: interval,
+		timeout:  timeout,
 		logger:   logger,
 		in:       make(chan pending, size),
 		stopped:  make(chan struct{}),
@@ -85,13 +88,15 @@ func (b *Batcher) Submit(ctx context.Context, r Report) (Outcome, error) {
 // Run commits batches until ctx is cancelled, then commits what is pending.
 func (b *Batcher) Run(ctx context.Context) {
 	defer close(b.done)
+	commitCtx, cancel := lifecycle.DrainContext(ctx, b.timeout)
+	defer cancel()
 	batch := make([]pending, 0, b.size)
 	timer := time.NewTimer(time.Hour)
 	timer.Stop()
 	flush := func() {
 		timer.Stop()
 		if len(batch) > 0 {
-			b.commit(batch)
+			b.commit(commitCtx, batch)
 			batch = batch[:0]
 		}
 	}
@@ -122,12 +127,14 @@ func (b *Batcher) Run(ctx context.Context) {
 	}
 }
 
-func (b *Batcher) commit(batch []pending) {
+func (b *Batcher) commit(parent context.Context, batch []pending) {
+	ctx, cancel := context.WithTimeout(parent, b.timeout)
+	defer cancel()
 	reports := make([]Report, len(batch))
 	for i, p := range batch {
 		reports[i] = p.report
 	}
-	outcomes, err := Apply(context.Background(), b.db, reports)
+	outcomes, err := Apply(ctx, b.db, reports)
 	if err == nil {
 		metrics.DLRBatchSize.Observe(float64(len(batch)))
 	} else {

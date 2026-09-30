@@ -506,7 +506,7 @@ func TestEndToEndDeliveryReport(t *testing.T) {
 	c, _ := testutil.Customer(t, pool, 100)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	batcher := dlr.NewBatcher(pool, 100, 5*time.Millisecond, discard)
+	batcher := dlr.NewBatcher(pool, 100, 5*time.Millisecond, 2*time.Second, discard)
 	batcherDone := make(chan struct{})
 	go func() { defer close(batcherDone); batcher.Run(ctx) }()
 	t.Cleanup(func() { cancel(); <-batcherDone })

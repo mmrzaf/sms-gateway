@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mmrzaf/sms-gatway/internal/config"
+	"github.com/mmrzaf/sms-gatway/internal/lifecycle"
 	"github.com/mmrzaf/sms-gatway/internal/message"
 )
 
@@ -42,7 +43,7 @@ type Config struct {
 	Express    Policy
 	ExpressSLA time.Duration
 
-	// ShutdownTimeout bounds how long in-flight sends may finish on shutdown.
+	// ShutdownTimeout bounds completion transactions and the full shutdown drain.
 	ShutdownTimeout time.Duration
 }
 
@@ -152,13 +153,13 @@ func (w *Worker) ID() string { return w.id }
 // outcomes. Sends that do not finish keep their lease until it expires and
 // are then claimed by another worker.
 func (w *Worker) Run(ctx context.Context) error {
-	sendCtx, cancelSends := context.WithCancel(context.WithoutCancel(ctx))
+	sendCtx, cancelSends := lifecycle.DrainContext(ctx, w.cfg.ShutdownTimeout)
 	defer cancelSends()
 
 	completerDone := make(chan struct{})
 	go func() {
 		defer close(completerDone)
-		w.completer.run()
+		w.completer.run(sendCtx)
 	}()
 
 	var pools sync.WaitGroup
@@ -189,7 +190,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	}()
 	select {
 	case <-drained:
-	case <-time.After(w.cfg.ShutdownTimeout):
+	case <-sendCtx.Done():
 		w.logger.Warn("in-flight sends did not finish before the shutdown timeout")
 		cancelSends()
 		<-drained

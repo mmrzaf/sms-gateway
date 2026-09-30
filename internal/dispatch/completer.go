@@ -40,12 +40,17 @@ func newCompleter(w *Worker) *completer {
 	}
 }
 
-func (c *completer) submit(o outcome) { c.in <- o }
+func (c *completer) submit(ctx context.Context, o outcome) {
+	select {
+	case c.in <- o:
+	case <-ctx.Done():
+	}
+}
 
 // stop flushes what is pending and ends run. Call it after the last submit.
 func (c *completer) stop() { close(c.quit) }
 
-func (c *completer) run() {
+func (c *completer) run(ctx context.Context) {
 	size := c.w.cfg.CompleterBatchSize
 	batch := make([]outcome, 0, size)
 	timer := time.NewTimer(time.Hour)
@@ -54,12 +59,14 @@ func (c *completer) run() {
 	flush := func() {
 		timer.Stop()
 		if len(batch) > 0 {
-			c.flush(batch)
+			c.flush(ctx, batch)
 			batch = batch[:0]
 		}
 	}
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case o := <-c.in:
 			if len(batch) == 0 {
 				timer.Reset(c.w.cfg.CompleterFlushInterval)
@@ -89,9 +96,10 @@ func (c *completer) run() {
 
 // flush commits a batch, retrying transient failures. If the batch still
 // cannot be committed its outcomes are dropped: the leases expire and the
-// messages are dispatched again, which providers deduplicate.
-func (c *completer) flush(batch []outcome) {
-	ctx := context.Background()
+// messages are dispatched again. Provider deduplication is scoped to each provider.
+func (c *completer) flush(parent context.Context, batch []outcome) {
+	ctx, cancel := context.WithTimeout(parent, c.w.cfg.ShutdownTimeout)
+	defer cancel()
 	var err error
 	for attempt := 1; attempt <= 3; attempt++ {
 		c.refunded = 0
@@ -104,7 +112,9 @@ func (c *completer) flush(batch []outcome) {
 			metrics.CreditsRefunded.Add(float64(c.refunded))
 			return
 		}
-		time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
+		if !sleep(ctx, time.Duration(attempt)*100*time.Millisecond) {
+			break
+		}
 	}
 	c.w.logger.Error("dropping dispatch outcomes after repeated commit failures",
 		"outcomes", len(batch), "error", err)

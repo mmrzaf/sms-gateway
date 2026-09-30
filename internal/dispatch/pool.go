@@ -121,7 +121,7 @@ func (w *Worker) runPool(ctx, sendCtx context.Context, p *pool) {
 					p.inFlight.Done()
 				}()
 				if o, ok := w.dispatch(sendCtx, p.policy, j); ok {
-					w.completer.submit(o)
+					w.completer.submit(sendCtx, o)
 				}
 			}()
 		}

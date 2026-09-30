@@ -20,7 +20,7 @@ import (
 // startAPI runs the public server (customer API) and the admin server
 // (dashboard, admin API, DLR intake, metrics).
 func startAPI(ctx context.Context, g *errgroup.Group, d deps) {
-	batcher := dlr.NewBatcher(d.pool, d.cfg.DLR.BatchSize, d.cfg.DLR.FlushInterval, d.logger)
+	batcher := dlr.NewBatcher(d.pool, d.cfg.DLR.BatchSize, d.cfg.DLR.FlushInterval, d.cfg.ShutdownTimeout, d.logger)
 	g.Go(func() error {
 		batcher.Run(ctx)
 		return nil
