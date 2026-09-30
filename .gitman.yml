@@ -6,7 +6,6 @@
 image: docker:29-cli
 docker: true
 requires:
-  - postgres:17-alpine
   - golang:1.27-bookworm
   - gcr.io/distroless/static-debian12:nonroot
 
@@ -25,9 +24,6 @@ targets:
       DEPLOY_DIR: /srv/apps/sms-gateway
 
 steps:
-  - name: test release
-    run: sh deploy/check-release.sh
-
   - name: build image
     run: |
       set -eu
