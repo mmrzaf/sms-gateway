@@ -13,14 +13,15 @@ import (
 
 // job is a claimed message.
 type job struct {
-	ID         uuid.UUID
-	CustomerID uuid.UUID
-	Type       message.Type
-	Recipient  string
-	Body       string
-	Attempts   int
-	AcceptedAt time.Time
-	ExpiresAt  time.Time
+	ID           uuid.UUID
+	CustomerID   uuid.UUID
+	Type         message.Type
+	Recipient    string
+	Body         string
+	Attempts     int
+	AcceptedAt   time.Time
+	ExpiresAt    time.Time
+	LeaseVersion int64
 	// DBNow is the database time at claim; expiry decisions use it so that
 	// application clocks never decide state.
 	DBNow     time.Time
@@ -50,11 +51,12 @@ func (w *Worker) claim(ctx context.Context, lane string, n int) ([]job, error) {
 		)
 		UPDATE queue q
 		SET lease_owner = $3,
+		    lease_version = q.lease_version + 1,
 		    next_attempt_at = now() + $4 * interval '1 millisecond'
 		FROM picked, messages m
 		WHERE q.message_id = picked.message_id AND m.id = q.message_id
 		RETURNING m.id, m.customer_id, m.type, m.recipient, m.body, m.attempts,
-		          m.accepted_at, m.expires_at, now()`,
+		          m.accepted_at, m.expires_at, now(), q.lease_version`,
 		lane, n, w.id, w.cfg.LeaseDuration.Milliseconds())
 	if err != nil {
 		return nil, fmt.Errorf("claim %s: %w", lane, err)
@@ -64,7 +66,7 @@ func (w *Worker) claim(ctx context.Context, lane string, n int) ([]job, error) {
 		var j job
 		var typ string
 		err := row.Scan(&j.ID, &j.CustomerID, &typ, &j.Recipient, &j.Body, &j.Attempts,
-			&j.AcceptedAt, &j.ExpiresAt, &j.DBNow)
+			&j.AcceptedAt, &j.ExpiresAt, &j.DBNow, &j.LeaseVersion)
 		j.Type, j.claimedAt = message.Type(typ), claimedAt
 		return j, err
 	})

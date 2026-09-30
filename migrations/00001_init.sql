@@ -78,6 +78,7 @@ CREATE TABLE queue (
     lane             TEXT NOT NULL,
     next_attempt_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     lease_owner      TEXT,
+    lease_version    BIGINT NOT NULL DEFAULT 0,
     expires_at       TIMESTAMPTZ NOT NULL
 ) WITH (
     fillfactor = 70,

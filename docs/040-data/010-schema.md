@@ -39,6 +39,7 @@ erDiagram
         uuid message_id PK
         text lane
         timestamptz next_attempt_at
+        bigint lease_version
         text lease_owner
     }
     workers {
@@ -158,6 +159,7 @@ CREATE TABLE queue (
     lane             TEXT NOT NULL,
     next_attempt_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     lease_owner      TEXT,
+    lease_version    BIGINT NOT NULL DEFAULT 0,
     expires_at       TIMESTAMPTZ NOT NULL
 ) WITH (fillfactor = 70,
         autovacuum_vacuum_scale_factor = 0.01,

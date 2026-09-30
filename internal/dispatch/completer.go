@@ -20,9 +20,9 @@ import (
 // whichever comes first. Batching turns thousands of per-message commits
 // into a few dozen per second.
 //
-// Every statement is guarded twice: message updates by a status
-// compare-and-set, and queue changes by lease_owner, so the outcome of a
-// worker whose lease expired cannot overwrite another worker's work.
+// Completion locks the queue rows whose owner and lease generation still
+// match the claim before changing any message. Reclaimed leases reject late
+// outcomes, including when the same worker reclaimed its own job.
 type completer struct {
 	w    *Worker
 	in   chan outcome
@@ -153,8 +153,12 @@ func (c *completer) commit(ctx context.Context, tx pgx.Tx, batch []outcome) erro
 	sorted := slices.Clone(batch)
 	slices.SortFunc(sorted, func(a, b outcome) int { return compareIDs(a.job.ID, b.job.ID) })
 
+	owned, err := c.lockOwned(ctx, tx, sorted)
+	if err != nil {
+		return err
+	}
 	var sent, retry, deferred, terminal []outcome
-	for _, o := range sorted {
+	for _, o := range owned {
 		switch o.kind {
 		case outcomeSent:
 			sent = append(sent, o)
@@ -183,6 +187,43 @@ func (c *completer) commit(ctx context.Context, tx pgx.Tx, batch []outcome) erro
 		}
 	}
 	return nil
+}
+
+// lockOwned fences late outcomes and serializes completion with claiming and
+// expiry. Queue rows are locked in ID order before message rows are changed.
+func (c *completer) lockOwned(ctx context.Context, tx pgx.Tx, batch []outcome) ([]outcome, error) {
+	ids := make([]uuid.UUID, len(batch))
+	versions := make([]int64, len(batch))
+	for i, o := range batch {
+		ids[i], versions[i] = o.job.ID, o.job.LeaseVersion
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT q.message_id, q.lease_version
+		FROM queue q
+		JOIN unnest($1::uuid[], $2::bigint[]) AS r(id, version)
+		  ON q.message_id = r.id AND q.lease_version = r.version
+		WHERE q.lease_owner = $3
+		ORDER BY q.message_id
+		FOR UPDATE OF q`, ids, versions, c.w.id)
+	if err != nil {
+		return nil, fmt.Errorf("lock completion leases: %w", err)
+	}
+	current := make(map[uuid.UUID]int64, len(batch))
+	var id uuid.UUID
+	var version int64
+	if _, err := pgx.ForEachRow(rows, []any{&id, &version}, func() error {
+		current[id] = version
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("read completion leases: %w", err)
+	}
+	owned := make([]outcome, 0, len(current))
+	for _, o := range batch {
+		if version, ok := current[o.job.ID]; ok && version == o.job.LeaseVersion {
+			owned = append(owned, o)
+		}
+	}
+	return owned, nil
 }
 
 // commitSent records provider acceptance. A status already made terminal by

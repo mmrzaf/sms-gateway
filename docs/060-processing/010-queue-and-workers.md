@@ -37,6 +37,7 @@ WITH picked AS (
 )
 UPDATE queue q
 SET lease_owner = $worker_id,
+    lease_version = q.lease_version + 1,
     next_attempt_at = now() + $lease_duration
 FROM picked, messages m
 WHERE q.message_id = picked.message_id
@@ -92,7 +93,7 @@ Provider selection, error classification, backoff, and circuit breaking are in [
 
 Dispatch goroutines hand outcomes to the completer through a channel. The completer commits accumulated outcomes in one transaction when 200 outcomes are pending or 50 ms have passed since the first pending outcome (`COMPLETER_BATCH_SIZE`, `COMPLETER_FLUSH_INTERVAL`). Batching turns thousands of per-message commits into a few dozen per second.
 
-Outcomes in a batch are sorted by message ID before they are applied, and the DLR batcher sorts the same way, so concurrent transactions lock message rows in the same order. Every statement is guarded twice: message updates by a status compare-and-set, and queue changes by `lease_owner = $worker_id`. If a lease expired and another worker reclaimed the row, the stale worker's queue changes affect zero rows, and its message update is either still valid (the provider deduplicates the second send) or superseded.
+Each claim increments `lease_version`. Completion first locks queue rows in message ID order and checks both the worker ID and the claimed lease version. Only matching claims can change messages, refund credits, or reschedule work. A late completion after reclaim changes nothing, including when the same worker reclaimed its own expired lease. Queue locks remain held until commit. Message updates also use status guards to preserve an early delivery report. The DLR batcher sorts message IDs before updating rows.
 
 **sent**
 
