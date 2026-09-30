@@ -53,6 +53,7 @@ jobs:
         run: go test -race -count=1 ./...
 
   build:
+    needs: [lint, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

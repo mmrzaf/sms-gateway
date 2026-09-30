@@ -15,7 +15,7 @@ RUN set -eu; \
     printf 'deb %s bookworm main\ndeb %s bookworm-updates main\ndeb %s bookworm-security main\n' \
         "$DEBIAN_MIRROR" "$DEBIAN_MIRROR" "$DEBIAN_SECURITY_MIRROR" > /etc/apt/sources.list; \
     apt-get update; \
-    apt-get install -y --no-install-recommends git ca-certificates; \
+    apt-get install -y --no-install-recommends git ca-certificates gcc; \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
@@ -33,6 +33,11 @@ RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false \
         -X github.com/mmrzaf/sms-gatway/internal/buildinfo.Version=${VERSION} \
         -X github.com/mmrzaf/sms-gatway/internal/buildinfo.Commit=${COMMIT}" \
       -o /out/ ./cmd/...
+
+FROM build AS test
+
+# Database fixtures use a fresh schema for every integration test.
+CMD ["sh", "-ec", "test -z \"$(gofmt -l .)\"; go vet ./...; go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...; go test -race -count=1 ./..."]
 
 FROM ${RUNTIME_IMAGE}
 

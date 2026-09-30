@@ -6,6 +6,7 @@
 image: docker:29-cli
 docker: true
 requires:
+  - postgres:17-alpine
   - golang:1.27-bookworm
   - gcr.io/distroless/static-debian12:nonroot
 
@@ -24,6 +25,9 @@ targets:
       DEPLOY_DIR: /srv/apps/sms-gateway
 
 steps:
+  - name: test release
+    run: sh deploy/check-release.sh
+
   - name: build image
     run: |
       set -eu
@@ -84,5 +88,10 @@ steps:
             --project-directory "$DEPLOY_DIR" \
             --env-file "$DEPLOY_DIR/.env" \
             -f "$DEPLOY_DIR/docker-compose.yml" \
-            up -d --remove-orphans
+            up -d --remove-orphans --wait --wait-timeout 120
+          docker compose \
+            --project-directory "$DEPLOY_DIR" \
+            --env-file "$DEPLOY_DIR/.env" \
+            -f "$DEPLOY_DIR/docker-compose.yml" \
+            exec -T gateway-api gateway probe http://localhost:8081/readyz
         '

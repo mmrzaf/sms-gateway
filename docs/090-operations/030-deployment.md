@@ -7,7 +7,7 @@ How the system is packaged and deployed at minimum scale, and how the same artif
 One container image built from `deploy/Dockerfile`:
 
 - Build stage: the pinned Go toolchain compiles `cmd/gateway` and `cmd/provider` as static binaries with `CGO_ENABLED=0`.
-- Runtime stage: a distroless static base image containing `/gateway` and `/provider`, running as a non-root user.
+- Runtime stage: a distroless static base image containing `/usr/local/bin/gateway` and `/usr/local/bin/provider`, running as a non-root user.
 
 Migrations, OpenAPI specification, and dashboard assets are embedded in the gateway binary, so the image has no other files.
 
@@ -86,7 +86,7 @@ must stay `1`; the scaled topology changes that, see
 ## Startup and shutdown order
 
 1. PostgreSQL becomes healthy.
-2. `migrate` applies pending migrations and exits. Migrations are idempotent, so running the job on every deployment is safe.
+2. `migrate` initializes a fresh database and exits. This prototype keeps one initial schema and provides no upgrades or compatibility path. When that schema changes, use a fresh demo database; rerunning initialization does not upgrade an existing schema.
 3. API, worker, and provider processes start in any order. Workers tolerate providers that are not yet reachable (their circuits open and close as usual); providers retry DLRs until the API is reachable.
 
 On shutdown, processes stop accepting new work and drain in-flight work within `SHUTDOWN_TIMEOUT`; see [Queue and workers](../060-processing/010-queue-and-workers.md#shutdown). No shutdown order is required for correctness.
@@ -129,3 +129,9 @@ The worker's `LISTEN` connection needs a session and connects to PostgreSQL dire
 - [Configuration](020-configuration.md)
 - [Running locally](010-running-locally.md)
 - [Observability](040-observability.md)
+
+## Release checks
+
+Gitman runs `sh deploy/check-release.sh` before building or deploying the release image. It builds a Go 1.27 test image, starts an isolated PostgreSQL 17 container, and runs formatting checks, vet, pinned staticcheck, and all tests with the race detector. The script removes its containers, network, and temporary image on exit. It never connects to the deployment database. GitHub image builds also depend on successful lint and test jobs.
+
+A `v*` tag deploys through Gitman. Deployment waits up to 120 seconds for Compose health checks and probes admin readiness. A failing check fails the pipeline; it does not roll back a deployment automatically. Existing demo databases must be recreated before deploying a changed initial schema.
